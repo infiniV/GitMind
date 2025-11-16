@@ -17,6 +17,8 @@ const (
 	ActionSplitCommits
 	// ActionReview recommends manual review before proceeding.
 	ActionReview
+	// ActionMerge recommends merging the current branch to parent/target.
+	ActionMerge
 )
 
 // String returns the string representation of the action type.
@@ -30,6 +32,8 @@ func (at ActionType) String() string {
 		return "split-commits"
 	case ActionReview:
 		return "review"
+	case ActionMerge:
+		return "merge"
 	default:
 		return fmt.Sprintf("ActionType(%d)", at)
 	}
@@ -68,6 +72,8 @@ type Decision struct {
 	branchName     string
 	alternatives   []Alternative
 	requiresReview bool
+	mergeStrategy  string // Suggested merge strategy (for ActionMerge)
+	targetBranch   string // Target branch for merge (for ActionMerge)
 }
 
 // NewDecision creates a new Decision.
@@ -142,6 +148,26 @@ func (d *Decision) SetRequiresReview(required bool) {
 	d.requiresReview = required
 }
 
+// MergeStrategy returns the suggested merge strategy.
+func (d *Decision) MergeStrategy() string {
+	return d.mergeStrategy
+}
+
+// SetMergeStrategy sets the suggested merge strategy.
+func (d *Decision) SetMergeStrategy(strategy string) {
+	d.mergeStrategy = strategy
+}
+
+// TargetBranch returns the target branch for merge.
+func (d *Decision) TargetBranch() string {
+	return d.targetBranch
+}
+
+// SetTargetBranch sets the target branch for merge.
+func (d *Decision) SetTargetBranch(branch string) {
+	d.targetBranch = branch
+}
+
 // IsHighConfidence returns true if confidence is >= 0.8.
 func (d *Decision) IsHighConfidence() bool {
 	return d.confidence >= 0.8
@@ -202,6 +228,9 @@ func (d *Decision) Validate() error {
 	}
 	if d.action == ActionCommitDirect && d.suggestedMsg == nil {
 		return errors.New("commit message required for commit-direct action")
+	}
+	if d.action == ActionMerge && d.targetBranch == "" {
+		return errors.New("target branch required for merge action")
 	}
 	return nil
 }

@@ -49,6 +49,43 @@ type Operations interface {
 
 	// GetLog returns recent commit history (limited to count).
 	GetLog(ctx context.Context, repoPath string, count int) ([]CommitInfo, error)
+
+	// Branch Intelligence Operations
+
+	// GetBranchInfo returns detailed information about the current branch.
+	GetBranchInfo(ctx context.Context, repoPath string, protectedBranches []string) (*domain.BranchInfo, error)
+
+	// GetMergeBase returns the common ancestor commit hash between two branches.
+	GetMergeBase(ctx context.Context, repoPath, branch1, branch2 string) (string, error)
+
+	// GetBranchCommits returns commits unique to a branch (not in excludeBranch).
+	GetBranchCommits(ctx context.Context, repoPath, branch, excludeBranch string) ([]CommitInfo, error)
+
+	// ListBranches returns all local and optionally remote branches.
+	ListBranches(ctx context.Context, repoPath string, includeRemote bool) ([]string, error)
+
+	// GetDivergence returns how many commits ahead/behind branch1 is compared to branch2.
+	GetDivergence(ctx context.Context, repoPath, branch1, branch2 string) (ahead, behind int, err error)
+
+	// Parent Branch Tracking (via git config)
+
+	// GetParentBranch returns the parent branch for the given branch.
+	GetParentBranch(ctx context.Context, repoPath, branch string) (string, error)
+
+	// SetParentBranch sets the parent branch for the given branch in git config.
+	SetParentBranch(ctx context.Context, repoPath, branch, parent string) error
+
+	// Merge Operations
+
+	// Merge merges sourceBranch into the current branch using the specified strategy.
+	Merge(ctx context.Context, repoPath, sourceBranch, strategy, message string) error
+
+	// CanMerge checks if sourceBranch can be merged into targetBranch without conflicts.
+	// Returns true if merge is clean, false + conflict list if there are conflicts.
+	CanMerge(ctx context.Context, repoPath, sourceBranch, targetBranch string) (bool, []string, error)
+
+	// AbortMerge aborts an in-progress merge.
+	AbortMerge(ctx context.Context, repoPath string) error
 }
 
 // CommitInfo represents information about a commit.

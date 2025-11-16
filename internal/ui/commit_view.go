@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/yourusername/gitman/internal/domain"
 	"github.com/yourusername/gitman/internal/usecase"
 )
@@ -26,6 +27,7 @@ type CommitOption struct {
 	Description string
 	Message     *domain.CommitMessage
 	BranchName  string
+	Confidence  float64
 }
 
 // NewCommitViewModel creates a new commit view model.
@@ -51,6 +53,7 @@ func buildOptions(decision *domain.Decision) []CommitOption {
 		Description: decision.Reasoning(),
 		Message:     decision.SuggestedMessage(),
 		BranchName:  decision.BranchName(),
+		Confidence:  decision.Confidence(),
 	}
 	options = append(options, primaryOption)
 
@@ -60,7 +63,8 @@ func buildOptions(decision *domain.Decision) []CommitOption {
 			Action:      alt.Action,
 			Label:       getAlternativeLabel(alt.Action),
 			Description: alt.Description,
-			Message:     decision.SuggestedMessage(), // Reuse the same message
+			Message:     decision.SuggestedMessage(),
+			Confidence:  alt.Confidence,
 		}
 		options = append(options, option)
 	}
@@ -71,11 +75,13 @@ func buildOptions(decision *domain.Decision) []CommitOption {
 func getPrimaryLabel(decision *domain.Decision) string {
 	switch decision.Action() {
 	case domain.ActionCommitDirect:
-		return fmt.Sprintf("✓ Commit directly (confidence: %.0f%%)", decision.Confidence()*100)
+		return "Commit to current branch"
 	case domain.ActionCreateBranch:
-		return fmt.Sprintf("✓ Create branch '%s' (confidence: %.0f%%)", decision.BranchName(), decision.Confidence()*100)
+		return fmt.Sprintf("Create branch '%s'", decision.BranchName())
 	case domain.ActionReview:
-		return "⚠ Manual review recommended"
+		return "Manual review required"
+	case domain.ActionMerge:
+		return "Merge to parent branch"
 	default:
 		return "Unknown action"
 	}
@@ -84,11 +90,13 @@ func getPrimaryLabel(decision *domain.Decision) string {
 func getAlternativeLabel(action domain.ActionType) string {
 	switch action {
 	case domain.ActionCommitDirect:
-		return "Commit directly instead"
+		return "Commit directly"
 	case domain.ActionCreateBranch:
-		return "Create a new branch instead"
+		return "Create new branch"
 	case domain.ActionReview:
 		return "Review manually"
+	case domain.ActionMerge:
+		return "Merge to parent"
 	default:
 		return "Other option"
 	}
@@ -130,55 +138,149 @@ func (m CommitViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // View renders the UI.
 func (m CommitViewModel) View() string {
 	if m.err != nil {
-		return fmt.Sprintf("Error: %v\n", m.err)
+		return lipgloss.NewStyle().
+			Foreground(colorError).
+			Bold(true).
+			Render(fmt.Sprintf("ERROR: %v\n", m.err))
 	}
 
-	var sb strings.Builder
+	var sections []string
 
 	// Header
-	sb.WriteString("╔══════════════════════════════════════════════════════════════════════╗\n")
-	sb.WriteString("║                     GitMind - AI Commit Assistant                    ║\n")
-	sb.WriteString("╚══════════════════════════════════════════════════════════════════════╝\n\n")
+	header := headerStyle.Render("GitMind - Commit Assistant")
+	sections = append(sections, header)
 
 	// Repository info
 	repo := m.analysis.Repository
-	sb.WriteString(fmt.Sprintf("Repository: %s\n", repo.Path()))
-	sb.WriteString(fmt.Sprintf("Branch: %s\n", repo.CurrentBranch()))
+	repoInfo := m.renderRepoInfo(repo)
+	sections = append(sections, repoInfo)
 
-	// Warn if no remote configured
+	// Warning if no remote
 	if !repo.HasRemote() {
-		sb.WriteString("⚠️  No remote repository configured (use 'git remote add origin <url>')\n")
+		warning := warningStyle.Render("[WARNING]") + " " +
+			lipgloss.NewStyle().Foreground(colorMuted).Render(
+				"No remote configured. Use 'git remote add origin <url>' to add one.")
+		sections = append(sections, warning)
 	}
 
-	sb.WriteString(fmt.Sprintf("Changes: %s\n\n", repo.ChangeSummary()))
-
-	// AI suggested commit message
+	// Commit message box
 	decision := m.analysis.Decision
-	sb.WriteString("Suggested Commit Message:\n")
-	sb.WriteString("┌────────────────────────────────────────────────────────────────────┐\n")
-	if decision.SuggestedMessage() != nil {
-		sb.WriteString(fmt.Sprintf("│ %s\n", wrapText(decision.SuggestedMessage().Title(), 68)))
-	}
-	sb.WriteString("└────────────────────────────────────────────────────────────────────┘\n\n")
+	commitBox := m.renderCommitMessage(decision)
+	sections = append(sections, commitBox)
 
 	// Options
-	sb.WriteString("Select an action:\n\n")
-	for i, option := range m.options {
-		cursor := " "
-		if i == m.selectedIndex {
-			cursor = "▶"
-		}
-
-		sb.WriteString(fmt.Sprintf("%s %d. %s\n", cursor, i+1, option.Label))
-		sb.WriteString(fmt.Sprintf("     %s\n\n", wrapText(option.Description, 65)))
-	}
+	optionsSection := m.renderOptions()
+	sections = append(sections, optionsSection)
 
 	// Footer
-	sb.WriteString("────────────────────────────────────────────────────────────────────\n")
-	sb.WriteString("↑/↓: Navigate  Enter: Confirm  Esc/Q: Cancel\n")
-	sb.WriteString(fmt.Sprintf("AI Model: %s | Tokens: %d\n", m.analysis.Model, m.analysis.TokensUsed))
+	footer := m.renderFooter()
+	sections = append(sections, footer)
 
-	return sb.String()
+	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+}
+
+func (m CommitViewModel) renderRepoInfo(repo *domain.Repository) string {
+	var lines []string
+
+	lines = append(lines, sectionTitleStyle.Render("Repository"))
+
+	pathLine := repoLabelStyle.Render("Path:") + " " + repoValueStyle.Render(repo.Path())
+	lines = append(lines, pathLine)
+
+	branchLine := repoLabelStyle.Render("Branch:") + " " + repoValueStyle.Render(repo.CurrentBranch())
+	lines = append(lines, branchLine)
+
+	changesLine := repoLabelStyle.Render("Changes:") + " " + repoValueStyle.Render(repo.ChangeSummary())
+	lines = append(lines, changesLine)
+
+	return strings.Join(lines, "\n")
+}
+
+func (m CommitViewModel) renderCommitMessage(decision *domain.Decision) string {
+	var content string
+
+	if decision.SuggestedMessage() != nil {
+		content = decision.SuggestedMessage().Title()
+	} else {
+		content = "No message generated"
+	}
+
+	title := sectionTitleStyle.Render("Suggested Commit Message")
+	box := commitBoxStyle.Render(content)
+
+	return title + "\n" + box
+}
+
+func (m CommitViewModel) renderOptions() string {
+	var lines []string
+
+	title := sectionTitleStyle.Render("Actions")
+	lines = append(lines, title)
+	lines = append(lines, "") // Empty line
+
+	for i, option := range m.options {
+		optionStr := m.renderOption(i, option)
+		lines = append(lines, optionStr)
+		lines = append(lines, "") // Space between options
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+func (m CommitViewModel) renderOption(index int, option CommitOption) string {
+	var parts []string
+
+	// Cursor and number
+	cursor := "  "
+	numberStyle := optionNormalStyle
+	labelStyle := optionNormalStyle
+	confStyle := getConfidenceStyle(option.Confidence)
+
+	if index == m.selectedIndex {
+		cursor = optionCursorStyle.Render("> ")
+		numberStyle = optionSelectedStyle
+		labelStyle = optionSelectedStyle
+	}
+
+	number := numberStyle.Render(fmt.Sprintf("%d.", index+1))
+	label := labelStyle.Render(option.Label)
+
+	// Confidence badge
+	confLabel := getConfidenceLabel(option.Confidence)
+	confBadge := confStyle.Render(fmt.Sprintf("[%s: %.0f%%]", confLabel, option.Confidence*100))
+
+	// First line: cursor + number + label + confidence
+	firstLine := cursor + number + " " + label + " " + confBadge
+	parts = append(parts, firstLine)
+
+	// Description (wrapped and indented)
+	if option.Description != "" {
+		wrapped := wrapText(option.Description, 65)
+		desc := descriptionStyle.Render(wrapped)
+		parts = append(parts, desc)
+	}
+
+	return strings.Join(parts, "\n")
+}
+
+func (m CommitViewModel) renderFooter() string {
+	var lines []string
+
+	// Keyboard shortcuts
+	shortcuts := []string{
+		shortcutKeyStyle.Render("↑/↓") + " " + shortcutDescStyle.Render("Navigate"),
+		shortcutKeyStyle.Render("Enter") + " " + shortcutDescStyle.Render("Confirm"),
+		shortcutKeyStyle.Render("Esc/Q") + " " + shortcutDescStyle.Render("Cancel"),
+	}
+	shortcutLine := strings.Join(shortcuts, "  ")
+	lines = append(lines, shortcutLine)
+
+	// Metadata
+	metadata := metadataStyle.Render(fmt.Sprintf("Model: %s  |  Tokens: %d",
+		m.analysis.Model, m.analysis.TokensUsed))
+	lines = append(lines, metadata)
+
+	return footerStyle.Render(strings.Join(lines, "\n"))
 }
 
 // GetSelectedOption returns the currently selected option.
@@ -203,5 +305,11 @@ func wrapText(text string, width int) string {
 	if len(text) <= width {
 		return text
 	}
+
+	// Try to wrap at word boundary
+	if lastSpace := strings.LastIndex(text[:width], " "); lastSpace > width-20 {
+		return text[:lastSpace] + "..."
+	}
+
 	return text[:width-3] + "..."
 }

@@ -161,12 +161,39 @@ func (c *CerebrasProvider) buildPrompt(request AnalysisRequest) string {
 
 	// Repository context
 	sb.WriteString(fmt.Sprintf("Repository: %s\n", request.Repository.Path()))
-	sb.WriteString(fmt.Sprintf("Current branch: %s\n", request.Repository.CurrentBranch()))
+
+	// Branch context (enhanced)
+	if request.BranchInfo != nil {
+		branchDesc := request.BranchInfo.Name()
+		if request.BranchInfo.Parent() != "" {
+			branchDesc += fmt.Sprintf(" (parent: %s", request.BranchInfo.Parent())
+			if request.BranchInfo.CommitCount() > 0 {
+				branchDesc += fmt.Sprintf(", %d commits on this branch", request.BranchInfo.CommitCount())
+			}
+			branchDesc += ")"
+		}
+
+		if request.BranchInfo.IsProtected() {
+			branchDesc += " [PROTECTED BRANCH]"
+		} else {
+			branchDesc += fmt.Sprintf(" [%s branch]", request.BranchInfo.Type())
+		}
+
+		sb.WriteString(fmt.Sprintf("Current branch: %s\n", branchDesc))
+	} else {
+		sb.WriteString(fmt.Sprintf("Current branch: %s\n", request.Repository.CurrentBranch()))
+	}
+
 	sb.WriteString(fmt.Sprintf("Changes: %s\n\n", request.Repository.ChangeSummary()))
 
-	// Recent commits for context
+	// Recent commits for context (with scope indicator)
 	if len(request.RecentLog) > 0 {
-		sb.WriteString("Recent commits:\n")
+		commitScope := "Recent commits"
+		if request.BranchInfo != nil && request.BranchInfo.Parent() != "" {
+			commitScope = fmt.Sprintf("Commits on this branch (since %s)", request.BranchInfo.Parent())
+		}
+		sb.WriteString(fmt.Sprintf("%s:\n", commitScope))
+
 		for i, log := range request.RecentLog {
 			if i >= 3 {
 				break // Limit to 3 recent commits
@@ -195,14 +222,32 @@ func (c *CerebrasProvider) buildPrompt(request AnalysisRequest) string {
 		sb.WriteString(fmt.Sprintf("User context: %s\n\n", request.UserPrompt))
 	}
 
-	// Instructions
+	// Merge opportunity detection
+	if request.MergeOpportunity {
+		sb.WriteString("**MERGE OPPORTUNITY DETECTED**\n")
+		sb.WriteString(fmt.Sprintf("- Working directory is clean (no uncommitted changes)\n"))
+		sb.WriteString(fmt.Sprintf("- Branch has %d commits ready to merge into '%s'\n", request.MergeCommitCount, request.MergeTargetBranch))
+		sb.WriteString("- Consider recommending a MERGE action instead of commit\n\n")
+	}
+
+	// Instructions (enhanced with branch-aware guidance)
 	sb.WriteString("Based on these changes, provide:\n")
 	sb.WriteString("1. A clear, concise commit message")
 	if request.UseConventionalCommits {
 		sb.WriteString(" following conventional commits format (type(scope): description)")
 	}
 	sb.WriteString("\n")
-	sb.WriteString("2. Your recommendation: should this be committed directly or in a new branch?\n")
+	sb.WriteString("2. Your recommendation:\n")
+	if request.MergeOpportunity {
+		sb.WriteString("   - MERGE OPPORTUNITY: Branch is clean with multiple commits. Consider recommending 'merge' action.\n")
+		sb.WriteString("   - User can merge to parent branch or continue working.\n")
+	} else if request.BranchInfo != nil && request.BranchInfo.IsProtected() {
+		sb.WriteString("   - IMPORTANT: User is on a PROTECTED branch. Strongly recommend creating a feature branch.\n")
+	} else if request.BranchInfo != nil && request.BranchInfo.Type() != "protected" {
+		sb.WriteString("   - User is on a feature branch. Consider if changes fit the branch purpose.\n")
+		sb.WriteString("   - If changes match the branch theme, recommend committing directly.\n")
+		sb.WriteString("   - If changes are unrelated or substantial, consider creating a new branch.\n")
+	}
 	sb.WriteString("3. Brief reasoning for your recommendation\n")
 	sb.WriteString("4. Alternative approaches if applicable\n")
 
@@ -222,7 +267,7 @@ func (c *CerebrasProvider) buildStructuredRequest(prompt string) cerebrasRequest
 			},
 			"action": {
 				Type:        "string",
-				Enum:        []string{"commit-direct", "create-branch", "review"},
+				Enum:        []string{"commit-direct", "create-branch", "review", "merge"},
 				Description: "Recommended action to take",
 			},
 			"confidence": {
@@ -381,6 +426,149 @@ func (c *CerebrasProvider) parseResponse(resp *cerebrasResponse, useConventional
 	return decision, nil
 }
 
+// GenerateMergeMessage generates a merge commit message and suggests a merge strategy.
+func (c *CerebrasProvider) GenerateMergeMessage(ctx context.Context, request MergeMessageRequest) (*MergeMessageResponse, error) {
+	// Build prompt for merge message generation
+	prompt := c.buildMergePrompt(request)
+
+	// Build structured request for merge message
+	structuredReq := c.buildMergeStructuredRequest(prompt)
+
+	// Call API
+	resp, err := c.makeRequestWithRetry(ctx, structuredReq, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse response
+	mergeResponse, err := c.parseMergeResponse(resp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse merge response: %w", err)
+	}
+
+	mergeResponse.TokensUsed = resp.Usage.TotalTokens
+	mergeResponse.Model = resp.Model
+
+	return mergeResponse, nil
+}
+
+// buildMergePrompt builds the prompt for merge message generation.
+func (c *CerebrasProvider) buildMergePrompt(request MergeMessageRequest) string {
+	var sb strings.Builder
+
+	sb.WriteString("You are an expert Git workflow assistant. Generate a merge commit message for the following branch merge.\n\n")
+
+	// Merge context
+	sb.WriteString(fmt.Sprintf("Merging: %s → %s\n", request.SourceBranch, request.TargetBranch))
+	sb.WriteString(fmt.Sprintf("Commits being merged: %d\n\n", request.CommitCount))
+
+	// List commits
+	sb.WriteString("Commits to merge:\n")
+	maxCommits := len(request.Commits)
+	if maxCommits > 10 {
+		maxCommits = 10 // Limit to avoid token overflow
+	}
+	for i := 0; i < maxCommits; i++ {
+		sb.WriteString(fmt.Sprintf("%d. %s\n", i+1, request.Commits[i]))
+	}
+	if len(request.Commits) > maxCommits {
+		sb.WriteString(fmt.Sprintf("... and %d more commits\n", len(request.Commits)-maxCommits))
+	}
+	sb.WriteString("\n")
+
+	// Instructions
+	sb.WriteString("Provide:\n")
+	sb.WriteString("1. A concise merge commit message that summarizes the changes\n")
+	sb.WriteString("2. Recommended merge strategy:\n")
+	sb.WriteString("   - 'squash' if many commits (5+) or commits contain WIP/fixup messages\n")
+	sb.WriteString("   - 'regular' if few meaningful commits (1-4) that should be preserved\n")
+	sb.WriteString("   - 'fast-forward' if linear history is possible\n")
+	sb.WriteString("3. Brief reasoning for your recommendation\n")
+
+	return sb.String()
+}
+
+// buildMergeStructuredRequest builds a structured request for merge message generation.
+func (c *CerebrasProvider) buildMergeStructuredRequest(prompt string) cerebrasRequest {
+	falseBool := false
+
+	schema := analysisSchema{
+		Type: "object",
+		Properties: map[string]property{
+			"merge_message": {
+				Type:        "string",
+				Description: "Concise merge commit message summarizing the changes",
+			},
+			"strategy": {
+				Type:        "string",
+				Enum:        []string{"squash", "regular", "fast-forward"},
+				Description: "Recommended merge strategy",
+			},
+			"reasoning": {
+				Type:        "string",
+				Description: "Brief explanation for the recommendation",
+			},
+		},
+		Required:             []string{"merge_message", "strategy", "reasoning"},
+		AdditionalProperties: &falseBool,
+	}
+
+	// Use lower temperature for more consistent merge messages
+	temp := 0.3
+
+	return cerebrasRequest{
+		Model: c.model,
+		Messages: []message{
+			{
+				Role:    "user",
+				Content: prompt,
+			},
+		},
+		ResponseFormat: &responseFormat{
+			Type: "json_schema",
+			JSONSchema: &jsonSchema{
+				Name:   "merge_message_generation",
+				Strict: true,
+				Schema: schema,
+			},
+		},
+		MaxCompletionTokens: 500, // Merge messages should be concise
+		Temperature:         &temp,
+	}
+}
+
+// parseMergeResponse parses the API response into a MergeMessageResponse.
+func (c *CerebrasProvider) parseMergeResponse(resp *cerebrasResponse) (*MergeMessageResponse, error) {
+	if len(resp.Choices) == 0 {
+		return nil, errors.New("no response from AI")
+	}
+
+	content := resp.Choices[0].Message.Content
+
+	// Parse JSON response
+	var mergeAnalysis struct {
+		MergeMessage string `json:"merge_message"`
+		Strategy     string `json:"strategy"`
+		Reasoning    string `json:"reasoning"`
+	}
+
+	if err := json.Unmarshal([]byte(content), &mergeAnalysis); err != nil {
+		return nil, fmt.Errorf("failed to parse JSON response: %w", err)
+	}
+
+	// Create commit message
+	commitMsg, err := domain.NewCommitMessage(mergeAnalysis.MergeMessage)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create commit message: %w", err)
+	}
+
+	return &MergeMessageResponse{
+		MergeMessage:      commitMsg,
+		SuggestedStrategy: mergeAnalysis.Strategy,
+		Reasoning:         mergeAnalysis.Reasoning,
+	}, nil
+}
+
 // Helper functions
 
 func mapActionType(action string) domain.ActionType {
@@ -391,6 +579,8 @@ func mapActionType(action string) domain.ActionType {
 		return domain.ActionCreateBranch
 	case "review":
 		return domain.ActionReview
+	case "merge":
+		return domain.ActionMerge
 	default:
 		return domain.ActionReview // Safe default
 	}

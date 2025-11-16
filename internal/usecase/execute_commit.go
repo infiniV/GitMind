@@ -49,6 +49,12 @@ func (uc *ExecuteCommitUseCase) Execute(ctx context.Context, req ExecuteCommitRe
 	}
 
 	switch req.Action {
+	case domain.ActionReview:
+		// User chose manual review - just exit gracefully
+		resp.Message = "Manual review selected - no changes were made"
+		resp.Success = true
+		return resp, nil
+
 	case domain.ActionCommitDirect:
 		// Stage files first
 		if req.StageAll {
@@ -85,6 +91,12 @@ func (uc *ExecuteCommitUseCase) Execute(ctx context.Context, req ExecuteCommitRe
 			resp.Message = "Made initial commit on master (cannot create branch in empty repo)"
 		} else {
 			// Normal flow: create branch, checkout, then stage and commit
+			// Get current branch name before creating new branch (this will be the parent)
+			currentBranch, err := uc.gitOps.GetCurrentBranch(ctx, req.RepoPath)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get current branch: %w", err)
+			}
+
 			// Create and checkout new branch BEFORE staging
 			if err := uc.gitOps.CreateBranch(ctx, req.RepoPath, req.BranchName); err != nil {
 				return nil, fmt.Errorf("failed to create branch: %w", err)
@@ -92,6 +104,12 @@ func (uc *ExecuteCommitUseCase) Execute(ctx context.Context, req ExecuteCommitRe
 
 			if err := uc.gitOps.CheckoutBranch(ctx, req.RepoPath, req.BranchName); err != nil {
 				return nil, fmt.Errorf("failed to checkout branch: %w", err)
+			}
+
+			// Store parent branch in git config for later reference
+			if err := uc.gitOps.SetParentBranch(ctx, req.RepoPath, req.BranchName, currentBranch); err != nil {
+				// Non-fatal - just log and continue
+				// This is metadata, not critical for git operations
 			}
 
 			// NOW stage files on the new branch

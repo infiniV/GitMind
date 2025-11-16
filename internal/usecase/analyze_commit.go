@@ -29,11 +29,13 @@ type AnalyzeCommitRequest struct {
 	UserPrompt             string
 	UseConventionalCommits bool
 	APIKey                 *domain.APIKey
+	ProtectedBranches      []string
 }
 
 // AnalyzeCommitResponse contains the result of commit analysis.
 type AnalyzeCommitResponse struct {
 	Repository *domain.Repository
+	BranchInfo *domain.BranchInfo
 	Decision   *domain.Decision
 	Diff       string
 	TokensUsed int
@@ -57,9 +59,33 @@ func (uc *AnalyzeCommitUseCase) Execute(ctx context.Context, req AnalyzeCommitRe
 		return nil, fmt.Errorf("failed to get repository status: %w", err)
 	}
 
-	// Check if there are changes to commit
+	// Get branch information with context
+	branchInfo, err := uc.gitOps.GetBranchInfo(ctx, req.RepoPath, req.ProtectedBranches)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get branch info: %w", err)
+	}
+
+	// Check if there are changes to commit OR if there's a merge opportunity
+	hasMergeOpportunity := false
+	mergeTargetBranch := ""
+	mergeCommitCount := 0
+
 	if !repo.HasChanges() {
-		return nil, fmt.Errorf("no changes to commit")
+		// No changes - check if branch is ready for merge
+		// Criteria: clean working directory + has parent + 3+ commits
+		if branchInfo.Parent() != "" {
+			// Get commits to be merged
+			commits, err := uc.gitOps.GetBranchCommits(ctx, req.RepoPath, branchInfo.Name(), branchInfo.Parent())
+			if err == nil && len(commits) >= 3 {
+				hasMergeOpportunity = true
+				mergeTargetBranch = branchInfo.Parent()
+				mergeCommitCount = len(commits)
+			}
+		}
+
+		if !hasMergeOpportunity {
+			return nil, fmt.Errorf("no changes to commit")
+		}
 	}
 
 	// Get diff (check both staged and unstaged)
@@ -93,10 +119,25 @@ func (uc *AnalyzeCommitUseCase) Execute(ctx context.Context, req AnalyzeCommitRe
 	}
 
 	// Get recent commit log for context
-	recentCommits, err := uc.gitOps.GetLog(ctx, req.RepoPath, 5)
-	if err != nil {
-		// Non-fatal, continue without log context
-		recentCommits = []git.CommitInfo{}
+	// If we have a parent branch, get only commits on this branch (scoped)
+	// Otherwise, get recent commits from the branch
+	var recentCommits []git.CommitInfo
+	if branchInfo.Parent() != "" {
+		// Get commits unique to this branch (not in parent)
+		scopedCommits, err := uc.gitOps.GetBranchCommits(ctx, req.RepoPath, branchInfo.Name(), branchInfo.Parent())
+		if err == nil && len(scopedCommits) > 0 {
+			recentCommits = scopedCommits
+			// Limit to last 5 if more
+			if len(recentCommits) > 5 {
+				recentCommits = recentCommits[:5]
+			}
+		} else {
+			// Fallback to regular log if scoped commits fail
+			recentCommits, _ = uc.gitOps.GetLog(ctx, req.RepoPath, 5)
+		}
+	} else {
+		// No parent, use regular log
+		recentCommits, _ = uc.gitOps.GetLog(ctx, req.RepoPath, 5)
 	}
 
 	recentLog := make([]string, len(recentCommits))
@@ -107,11 +148,15 @@ func (uc *AnalyzeCommitUseCase) Execute(ctx context.Context, req AnalyzeCommitRe
 	// Prepare AI analysis request
 	aiReq := ai.AnalysisRequest{
 		Repository:             repo,
+		BranchInfo:             branchInfo,
 		Diff:                   diff,
 		RecentLog:              recentLog,
 		UserPrompt:             req.UserPrompt,
 		APIKey:                 req.APIKey,
 		UseConventionalCommits: req.UseConventionalCommits,
+		MergeOpportunity:       hasMergeOpportunity,
+		MergeTargetBranch:      mergeTargetBranch,
+		MergeCommitCount:       mergeCommitCount,
 	}
 
 	// Analyze with AI
@@ -122,6 +167,7 @@ func (uc *AnalyzeCommitUseCase) Execute(ctx context.Context, req AnalyzeCommitRe
 
 	return &AnalyzeCommitResponse{
 		Repository: repo,
+		BranchInfo: branchInfo,
 		Decision:   aiResp.Decision,
 		Diff:       diff,
 		TokensUsed: aiResp.TokensUsed,

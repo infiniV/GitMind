@@ -11,6 +11,9 @@ type Provider interface {
 	// Analyze analyzes git changes and returns a decision about how to proceed.
 	Analyze(ctx context.Context, request AnalysisRequest) (*AnalysisResponse, error)
 
+	// GenerateMergeMessage generates a merge commit message based on branch commits.
+	GenerateMergeMessage(ctx context.Context, request MergeMessageRequest) (*MergeMessageResponse, error)
+
 	// DetectTier attempts to detect the API key tier (free vs pro).
 	DetectTier(ctx context.Context) (domain.APITier, error)
 
@@ -23,12 +26,16 @@ type Provider interface {
 
 // AnalysisRequest contains all information needed for the AI to analyze changes.
 type AnalysisRequest struct {
-	Repository   *domain.Repository // Current repository state
-	Diff         string             // Git diff content
-	RecentLog    []string           // Recent commit messages for context
-	UserPrompt   string             // Optional user-provided context
-	APIKey       *domain.APIKey     // API key with tier information
-	UseConventionalCommits bool    // Whether to use conventional commit format
+	Repository             *domain.Repository // Current repository state
+	BranchInfo             *domain.BranchInfo // Branch context and metadata
+	Diff                   string             // Git diff content
+	RecentLog              []string           // Recent commit messages for context
+	UserPrompt             string             // Optional user-provided context
+	APIKey                 *domain.APIKey     // API key with tier information
+	UseConventionalCommits bool               // Whether to use conventional commit format
+	MergeOpportunity       bool               // Whether branch is ready for merge
+	MergeTargetBranch      string             // Target branch for merge (if MergeOpportunity is true)
+	MergeCommitCount       int                // Number of commits to be merged
 }
 
 // AnalysisResponse contains the AI's analysis and recommendations.
@@ -37,6 +44,24 @@ type AnalysisResponse struct {
 	TokensUsed       int              // Number of tokens consumed
 	Model            string           // Model used for analysis
 	ProcessingTimeMs int              // Processing time in milliseconds
+}
+
+// MergeMessageRequest contains information needed to generate a merge commit message.
+type MergeMessageRequest struct {
+	SourceBranch string   // Branch being merged from
+	TargetBranch string   // Branch being merged into
+	Commits      []string // Commit messages to summarize
+	CommitCount  int      // Number of commits being merged
+	APIKey       *domain.APIKey
+}
+
+// MergeMessageResponse contains the AI-generated merge message and strategy.
+type MergeMessageResponse struct {
+	MergeMessage      *domain.CommitMessage // Generated merge commit message
+	SuggestedStrategy string                // Suggested merge strategy ("squash", "regular", etc.)
+	Reasoning         string                // Explanation for the suggestion
+	TokensUsed        int                   // Number of tokens consumed
+	Model             string                // Model used
 }
 
 // ProviderConfig contains configuration for creating a provider.

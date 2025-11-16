@@ -10,11 +10,13 @@ import (
 
 // Config represents the application configuration.
 type Config struct {
-	AIProvider             string `json:"ai_provider"`
-	APIKey                 string `json:"api_key"`
-	APITier                string `json:"api_tier"`
-	UseConventionalCommits bool   `json:"use_conventional_commits"`
-	DefaultModel           string `json:"default_model"`
+	AIProvider             string   `json:"ai_provider"`
+	APIKey                 string   `json:"api_key"`
+	APITier                string   `json:"api_tier"`
+	UseConventionalCommits bool     `json:"use_conventional_commits"`
+	DefaultModel           string   `json:"default_model"`
+	ProtectedBranches      []string `json:"protected_branches"`
+	DefaultMergeStrategy   string   `json:"default_merge_strategy"`
 }
 
 // Manager handles configuration persistence.
@@ -45,6 +47,8 @@ func (m *Manager) Load() (*Config, error) {
 			UseConventionalCommits: false,
 			DefaultModel:           "llama-3.3-70b",
 			APITier:                "free",
+			ProtectedBranches:      []string{"main", "master", "develop"},
+			DefaultMergeStrategy:   "ask",
 		}, nil
 	}
 
@@ -77,12 +81,24 @@ func (m *Manager) Save(config *Config) error {
 	}
 
 	// Format config as simple key=value
+	protectedBranches := joinStrings(config.ProtectedBranches, ",")
+	if protectedBranches == "" {
+		protectedBranches = "main,master,develop"
+	}
+
+	mergeStrategy := config.DefaultMergeStrategy
+	if mergeStrategy == "" {
+		mergeStrategy = "ask"
+	}
+
 	content := fmt.Sprintf(`ai_provider=%s
 api_key=%s
 api_tier=%s
 use_conventional_commits=%v
 default_model=%s
-`, config.AIProvider, config.APIKey, config.APITier, config.UseConventionalCommits, config.DefaultModel)
+protected_branches=%s
+default_merge_strategy=%s
+`, config.AIProvider, config.APIKey, config.APITier, config.UseConventionalCommits, config.DefaultModel, protectedBranches, mergeStrategy)
 
 	// Write config file
 	if err := os.WriteFile(m.configPath, []byte(content), 0600); err != nil {
@@ -125,6 +141,8 @@ func parseSimpleConfig(content string) (*Config, error) {
 		UseConventionalCommits: false,
 		DefaultModel:           "llama-3.3-70b",
 		APITier:                "free",
+		ProtectedBranches:      []string{"main", "master", "develop"},
+		DefaultMergeStrategy:   "ask",
 	}
 
 	lines := splitLines(content)
@@ -152,6 +170,10 @@ func parseSimpleConfig(content string) (*Config, error) {
 			config.UseConventionalCommits = value == "true"
 		case "default_model":
 			config.DefaultModel = value
+		case "protected_branches":
+			config.ProtectedBranches = splitString(value, ",")
+		case "default_merge_strategy":
+			config.DefaultMergeStrategy = value
 		}
 	}
 
@@ -185,4 +207,45 @@ func splitKeyValue(s string) []string {
 		}
 	}
 	return []string{s}
+}
+
+// splitString splits a string by delimiter
+func splitString(s, delim string) []string {
+	if s == "" {
+		return []string{}
+	}
+
+	var result []string
+	var current string
+
+	for i := 0; i < len(s); i++ {
+		if string(s[i]) == delim {
+			if current != "" {
+				result = append(result, current)
+			}
+			current = ""
+		} else {
+			current += string(s[i])
+		}
+	}
+
+	if current != "" {
+		result = append(result, current)
+	}
+
+	return result
+}
+
+// joinStrings joins a slice of strings with delimiter
+func joinStrings(strs []string, delim string) string {
+	if len(strs) == 0 {
+		return ""
+	}
+
+	result := strs[0]
+	for i := 1; i < len(strs); i++ {
+		result += delim + strs[i]
+	}
+
+	return result
 }

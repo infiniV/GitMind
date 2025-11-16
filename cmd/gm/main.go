@@ -11,6 +11,7 @@ import (
 	"github.com/yourusername/gitman/internal/adapter/ai"
 	"github.com/yourusername/gitman/internal/adapter/config"
 	"github.com/yourusername/gitman/internal/adapter/git"
+	"github.com/yourusername/gitman/internal/domain"
 	"github.com/yourusername/gitman/internal/ui"
 	"github.com/yourusername/gitman/internal/usecase"
 )
@@ -38,6 +39,7 @@ commit messages and help you make smart branching decisions.`,
 	}
 
 	rootCmd.AddCommand(commitCmd())
+	rootCmd.AddCommand(mergeCmd())
 	rootCmd.AddCommand(configCmd())
 
 	if err := rootCmd.Execute(); err != nil {
@@ -62,6 +64,27 @@ or create a new branch based on the nature of your changes.`,
 
 	cmd.Flags().StringVarP(&userPrompt, "message", "m", "", "Additional context for the AI")
 	cmd.Flags().BoolVarP(&useConventional, "conventional", "c", false, "Use conventional commit format")
+
+	return cmd
+}
+
+func mergeCmd() *cobra.Command {
+	var sourceBranch string
+	var targetBranch string
+
+	cmd := &cobra.Command{
+		Use:   "merge",
+		Short: "Analyze and execute an AI-powered merge",
+		Long: `Analyzes a merge operation using AI and helps you merge branches intelligently.
+The AI will suggest an appropriate merge strategy (squash, regular, or fast-forward)
+and generate a meaningful merge commit message based on the commits being merged.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runMerge(sourceBranch, targetBranch)
+		},
+	}
+
+	cmd.Flags().StringVarP(&sourceBranch, "source", "s", "", "Source branch to merge from (default: current branch)")
+	cmd.Flags().StringVarP(&targetBranch, "target", "t", "", "Target branch to merge into (default: parent branch)")
 
 	return cmd
 }
@@ -121,8 +144,8 @@ func runCommit(userPrompt string, useConventional bool) error {
 	executeUseCase := usecase.NewExecuteCommitUseCase(gitOps)
 
 	// Analyze commit
-	fmt.Println("🤖 Analyzing your changes with AI...")
-	fmt.Println("   (reading file contents without staging...)")
+	ui.PrintInfo("Analyzing changes with AI...")
+	ui.PrintSubtle("Reading file contents (files will not be staged until you confirm)")
 
 	// Use longer timeout for analysis (AI can be slow on free tier)
 	analysisCtx, analysisCancel := context.WithTimeout(context.Background(), 90*time.Second)
@@ -133,16 +156,26 @@ func runCommit(userPrompt string, useConventional bool) error {
 		UserPrompt:             userPrompt,
 		UseConventionalCommits: useConventional || cfg.UseConventionalCommits,
 		APIKey:                 apiKey,
+		ProtectedBranches:      cfg.ProtectedBranches,
 	}
 
 	analysis, err := analyzeUseCase.Execute(analysisCtx, analysisReq)
 	if err != nil {
 		// Check for free tier limit error
 		if freeTierErr, ok := err.(*ai.FreeTierLimitError); ok {
-			fmt.Fprintf(os.Stderr, "\n⚠️  %s\n", freeTierErr.Message)
-			fmt.Fprintf(os.Stderr, "\nTip: You can upgrade your API key or wait %d seconds before trying again.\n", freeTierErr.RetryAfter)
+			ui.PrintWarning(freeTierErr.Message)
+			ui.PrintInfo(fmt.Sprintf("You can upgrade your API key or wait %d seconds before trying again", freeTierErr.RetryAfter))
 			return nil
 		}
+
+		// Special handling for common errors
+		errMsg := err.Error()
+		if errMsg == "no changes to commit" {
+			ui.PrintInfo("Working directory is clean - no changes to commit")
+			ui.PrintSubtle("Make some changes to your files, then run 'gm commit' again")
+			return nil
+		}
+
 		return fmt.Errorf("analysis failed: %w", err)
 	}
 
@@ -158,12 +191,12 @@ func runCommit(userPrompt string, useConventional bool) error {
 	commitModel := finalModel.(ui.CommitViewModel)
 
 	if commitModel.IsCancelled() {
-		fmt.Println("\n❌ Operation cancelled.")
+		ui.PrintInfo("Operation cancelled by user")
 		return nil
 	}
 
 	if !commitModel.IsConfirmed() {
-		fmt.Println("\n❌ No action selected.")
+		ui.PrintWarning("No action selected")
 		return nil
 	}
 
@@ -173,8 +206,24 @@ func runCommit(userPrompt string, useConventional bool) error {
 		return fmt.Errorf("no option selected")
 	}
 
+	// Handle merge action differently - run merge workflow instead
+	if option.Action == domain.ActionMerge {
+		fmt.Println() // Blank line
+		ui.PrintInfo("Launching merge workflow...")
+
+		// Determine target branch from branch info
+		targetBranch := ""
+		if analysis.BranchInfo != nil && analysis.BranchInfo.Parent() != "" {
+			targetBranch = analysis.BranchInfo.Parent()
+		}
+
+		// Run merge workflow
+		return runMerge("", targetBranch)
+	}
+
 	// Execute the commit
-	fmt.Printf("\n🚀 Executing: %s\n", option.Label)
+	fmt.Println() // Blank line
+	ui.PrintInfo("Executing selected action...")
 
 	// Create a fresh context for git operations (generous timeout for large repos)
 	execCtx, execCancel := context.WithTimeout(context.Background(), 120*time.Second)
@@ -195,19 +244,146 @@ func runCommit(userPrompt string, useConventional bool) error {
 	}
 
 	// Show success message
-	fmt.Printf("\n✅ %s\n", executeResp.Message)
-	if executeResp.BranchCreated != "" {
-		fmt.Printf("📦 Branch: %s\n", executeResp.BranchCreated)
+	fmt.Println() // Blank line
+
+	// Special handling for manual review
+	if option.Action == domain.ActionReview {
+		ui.PrintInfo(executeResp.Message)
+		ui.PrintSubtle("Review your changes, then run 'gm commit' again when ready")
+		return nil
 	}
-	fmt.Printf("💬 Message: %s\n", option.Message.Title())
+
+	ui.PrintSuccess(executeResp.Message)
+
+	if executeResp.BranchCreated != "" {
+		fmt.Printf("  %s %s\n", ui.FormatLabel("Branch:"), ui.FormatValue(executeResp.BranchCreated))
+	}
+	fmt.Printf("  %s %s\n", ui.FormatLabel("Message:"), ui.FormatValue(option.Message.Title()))
+
+	return nil
+}
+
+func runMerge(sourceBranch, targetBranch string) error {
+	// Load configuration
+	cfg, err := cfgManager.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Check if API key is configured
+	if cfg.APIKey == "" {
+		fmt.Println("GitMind is not configured yet.")
+		fmt.Println("Please run 'gm config' to set up your API key.")
+		return nil
+	}
+
+	// Get API key
+	apiKey, err := cfgManager.GetAPIKey(cfg)
+	if err != nil {
+		return fmt.Errorf("invalid API configuration: %w", err)
+	}
+
+	// Get current directory
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	// Initialize dependencies
+	gitOps := git.NewExecOperations()
+
+	// Create AI provider
+	providerConfig := ai.ProviderConfig{
+		Model:   cfg.DefaultModel,
+		Timeout: 30,
+	}
+
+	aiProvider := ai.NewCerebrasProvider(apiKey, providerConfig)
+
+	// Create use cases
+	analyzeUseCase := usecase.NewAnalyzeMergeUseCase(gitOps, aiProvider)
+	executeUseCase := usecase.NewExecuteMergeUseCase(gitOps)
+
+	// Analyze merge
+	ui.PrintInfo("Analyzing merge with AI...")
+
+	analysisCtx, analysisCancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer analysisCancel()
+
+	analysisReq := usecase.AnalyzeMergeRequest{
+		RepoPath:          cwd,
+		SourceBranch:      sourceBranch,
+		TargetBranch:      targetBranch,
+		ProtectedBranches: cfg.ProtectedBranches,
+		APIKey:            apiKey,
+	}
+
+	analysis, err := analyzeUseCase.Execute(analysisCtx, analysisReq)
+	if err != nil {
+		return fmt.Errorf("merge analysis failed: %w", err)
+	}
+
+	// Show TUI for user decision
+	model := ui.NewMergeViewModel(analysis)
+	p := tea.NewProgram(model)
+
+	finalModel, err := p.Run()
+	if err != nil {
+		return fmt.Errorf("UI error: %w", err)
+	}
+
+	mergeModel := finalModel.(ui.MergeViewModel)
+
+	if mergeModel.IsCancelled() {
+		ui.PrintInfo("Merge cancelled by user")
+		return nil
+	}
+
+	if !mergeModel.IsConfirmed() {
+		ui.PrintWarning("No strategy selected")
+		return nil
+	}
+
+	// Get selected strategy
+	strategy := mergeModel.GetSelectedStrategy()
+	if strategy == "" {
+		return fmt.Errorf("no strategy selected")
+	}
+
+	// Execute the merge
+	fmt.Println() // Blank line
+	ui.PrintInfo(fmt.Sprintf("Executing %s merge...", strategy))
+
+	execCtx, execCancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer execCancel()
+
+	executeReq := usecase.ExecuteMergeRequest{
+		RepoPath:     cwd,
+		SourceBranch: analysis.SourceBranchInfo.Name(),
+		TargetBranch: analysis.TargetBranch,
+		Strategy:     strategy,
+		MergeMessage: analysis.MergeMessage,
+	}
+
+	executeResp, err := executeUseCase.Execute(execCtx, executeReq)
+	if err != nil {
+		return fmt.Errorf("merge execution failed: %w", err)
+	}
+
+	// Show success message
+	fmt.Println() // Blank line
+	ui.PrintSuccess(executeResp.Message)
+
+	if executeResp.MergeCommit != "" {
+		fmt.Printf("  %s %s\n", ui.FormatLabel("Commit:"), ui.FormatValue(executeResp.MergeCommit))
+	}
+	fmt.Printf("  %s %s\n", ui.FormatLabel("Strategy:"), ui.FormatValue(executeResp.Strategy))
 
 	return nil
 }
 
 func runConfig() error {
-	fmt.Println("╔══════════════════════════════════════════════════════════════╗")
-	fmt.Println("║              GitMind Configuration Wizard                    ║")
-	fmt.Println("╚══════════════════════════════════════════════════════════════╝")
+	ui.PrintInfo("GitMind Configuration Wizard")
 	fmt.Println()
 
 	// Load existing config
@@ -291,9 +467,8 @@ func runConfig() error {
 	}
 
 	fmt.Println()
-	fmt.Printf("✅ Configuration saved to: %s\n", cfgManager.ConfigPath())
-	fmt.Println()
-	fmt.Println("You're all set! Try running 'gm commit' in a git repository.")
+	ui.PrintSuccess(fmt.Sprintf("Configuration saved to: %s", cfgManager.ConfigPath()))
+	ui.PrintInfo("You're all set! Try running 'gm commit' in a git repository")
 
 	return nil
 }
