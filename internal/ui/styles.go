@@ -112,6 +112,68 @@ var (
 	metadataStyle = lipgloss.NewStyle().
 			Foreground(colorMuted).
 			Italic(true)
+
+	// Dashboard card styles
+	dashboardCardStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(colorBorder).
+				Padding(1).
+				Width(38).
+				Height(7)
+
+	dashboardCardActiveStyle = lipgloss.NewStyle().
+					Border(lipgloss.RoundedBorder()).
+					BorderForeground(colorSelected).
+					Padding(1).
+					Width(38).
+					Height(7)
+
+	cardTitleStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(colorPrimary)
+
+	cardContentStyle = lipgloss.NewStyle().
+				Foreground(colorMuted).
+				MarginTop(1)
+
+	cardIconStyle = lipgloss.NewStyle().
+			Foreground(colorSecondary).
+			Bold(true)
+
+	// Status indicator styles
+	statusOkStyle = lipgloss.NewStyle().
+			Foreground(colorSuccess).
+			Bold(true)
+
+	statusWarningStyle = lipgloss.NewStyle().
+				Foreground(colorWarning).
+				Bold(true)
+
+	statusErrorStyle = lipgloss.NewStyle().
+				Foreground(colorError).
+				Bold(true)
+
+	statusInfoStyle = lipgloss.NewStyle().
+			Foreground(colorPrimary).
+			Bold(true)
+
+	// Submenu styles
+	submenuStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorPrimary).
+			Padding(1, 2).
+			Background(lipgloss.Color("#1F2937"))
+
+	submenuOptionStyle = lipgloss.NewStyle().
+				Foreground(colorMuted)
+
+	submenuOptionActiveStyle = lipgloss.NewStyle().
+					Foreground(colorSelected).
+					Bold(true)
+
+	checkboxStyle = lipgloss.NewStyle().
+			Foreground(colorPrimary).
+			Bold(true)
 )
 
 // Helper functions for confidence levels

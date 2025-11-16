@@ -36,6 +36,13 @@ func main() {
 		Long: `GitMind (gm) is an intelligent Git CLI manager that uses AI to generate
 commit messages and help you make smart branching decisions.`,
 		Version: version,
+		Run: func(cmd *cobra.Command, args []string) {
+			// Launch dashboard when no subcommand provided
+			if err := runDashboard(); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+		},
 	}
 
 	rootCmd.AddCommand(commitCmd())
@@ -380,6 +387,76 @@ func runMerge(sourceBranch, targetBranch string) error {
 	fmt.Printf("  %s %s\n", ui.FormatLabel("Strategy:"), ui.FormatValue(executeResp.Strategy))
 
 	return nil
+}
+
+func runDashboard() error {
+	// Get current directory
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	// Initialize git operations
+	gitOps := git.NewExecOperations()
+
+	// Check if we're in a git repo
+	ctx := context.Background()
+	isRepo, err := gitOps.IsGitRepo(ctx, cwd)
+	if err != nil || !isRepo {
+		ui.PrintWarning("Not in a git repository")
+		ui.PrintInfo("Navigate to a git repository to use the dashboard")
+		ui.PrintInfo("Or run 'gm config' to configure GitMind")
+		return nil
+	}
+
+	// Create and launch dashboard
+	model := ui.NewDashboardModel(gitOps, cwd)
+	p := tea.NewProgram(model)
+
+	finalModel, err := p.Run()
+	if err != nil {
+		return fmt.Errorf("dashboard error: %w", err)
+	}
+
+	dashModel := finalModel.(ui.DashboardModel)
+
+	if dashModel.IsCancelled() {
+		return nil
+	}
+
+	// Handle dashboard actions
+	action := dashModel.GetAction()
+	params := dashModel.GetActionParams()
+
+	switch action {
+	case ui.ActionCommit:
+		// Launch commit workflow with options from dashboard
+		conventional, _ := params["conventional"].(bool)
+		message, _ := params["message"].(string)
+		return runCommit(message, conventional)
+
+	case ui.ActionMerge:
+		// Launch merge workflow with options from dashboard
+		source, _ := params["source"].(string)
+		target, _ := params["target"].(string)
+		return runMerge(source, target)
+
+	case ui.ActionSwitchBranch:
+		// Switch to selected branch
+		branch, _ := params["branch"].(string)
+		if branch != "" {
+			ui.PrintInfo(fmt.Sprintf("Switching to branch: %s", branch))
+			if err := gitOps.CheckoutBranch(ctx, cwd, branch); err != nil {
+				return fmt.Errorf("failed to switch branch: %w", err)
+			}
+			ui.PrintSuccess(fmt.Sprintf("Switched to branch: %s", branch))
+		}
+		return nil
+
+	default:
+		// No action, just return
+		return nil
+	}
 }
 
 func runConfig() error {
