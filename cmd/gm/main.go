@@ -46,6 +46,7 @@ commit messages and help you make smart branching decisions.`,
 	rootCmd.AddCommand(commitCmd())
 	rootCmd.AddCommand(mergeCmd())
 	rootCmd.AddCommand(configCmd())
+	rootCmd.AddCommand(onboardCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
@@ -91,6 +92,26 @@ func configCmd() *cobra.Command {
 		Long:  `Interactive configuration wizard to set up API keys and preferences.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runConfig()
+		},
+	}
+
+	return cmd
+}
+
+func onboardCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "onboard",
+		Short: "Run the GitMind setup wizard",
+		Long: `Interactive onboarding wizard to set up GitMind for your workspace.
+This wizard will guide you through:
+  - Git repository initialization
+  - GitHub integration setup
+  - Branch preferences
+  - Commit conventions
+  - Branch naming patterns
+  - AI provider configuration`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runOnboard()
 		},
 	}
 
@@ -408,32 +429,32 @@ func runDashboard() error {
 	}
 
 	// Check if API key is configured
-	if cfg.APIKey == "" {
+	if cfg.AI.APIKey == "" {
 		ui.PrintWarning("No API key configured")
-		ui.PrintInfo("Run 'gm config' to set up your Cerebras API key")
+		ui.PrintInfo("Run 'gm config' or 'gm onboard' to set up your Cerebras API key")
 		ui.PrintInfo("You can get a free API key at https://cloud.cerebras.ai")
 		return fmt.Errorf("API key not configured")
 	}
 
 	// Create AI provider
-	apiKey, err := domain.NewAPIKey(cfg.APIKey, "cerebras")
+	apiKey, err := domain.NewAPIKey(cfg.AI.APIKey, cfg.AI.Provider)
 	if err != nil {
 		return fmt.Errorf("invalid API key: %w", err)
 	}
-	tier, err := domain.ParseAPITier(cfg.APITier)
+	tier, err := domain.ParseAPITier(cfg.AI.APITier)
 	if err != nil {
 		tier = domain.TierUnknown
 	}
 	apiKey.SetTier(tier)
 
 	providerConfig := ai.ProviderConfig{
-		Model:   cfg.DefaultModel,
+		Model:   cfg.AI.DefaultModel,
 		Timeout: 30,
 	}
 	aiProvider := ai.NewCerebrasProvider(apiKey, providerConfig)
 
 	// Create and launch AppModel (unified TUI)
-	model := ui.NewAppModel(gitOps, aiProvider, cfg, cwd)
+	model := ui.NewAppModel(gitOps, aiProvider, cfg, cfgManager, cwd)
 	p := tea.NewProgram(model, tea.WithAltScreen())
 
 	_, err = p.Run()
@@ -456,30 +477,30 @@ func runConfig() error {
 
 	// API Provider
 	fmt.Println("AI Provider:")
-	fmt.Printf("  Current: %s\n", cfg.AIProvider)
+	fmt.Printf("  Current: %s\n", cfg.AI.Provider)
 	fmt.Print("  Press Enter to keep current or type new provider: ")
 
 	var provider string
-	fmt.Scanln(&provider)
+	_, _ = fmt.Scanln(&provider)
 	if provider != "" {
-		cfg.AIProvider = provider
+		cfg.AI.Provider = provider
 	}
 
 	// API Key
 	fmt.Println()
 	fmt.Println("Cerebras API Key:")
 	fmt.Println("  Get your free API key at: https://cloud.cerebras.ai/")
-	if cfg.APIKey != "" {
-		fmt.Printf("  Current: %s***\n", cfg.APIKey[:min(4, len(cfg.APIKey))])
+	if cfg.AI.APIKey != "" {
+		fmt.Printf("  Current: %s***\n", cfg.AI.APIKey[:min(4, len(cfg.AI.APIKey))])
 		fmt.Print("  Press Enter to keep current or paste new key: ")
 	} else {
 		fmt.Print("  Paste your API key: ")
 	}
 
 	var apiKey string
-	fmt.Scanln(&apiKey)
+	_, _ = fmt.Scanln(&apiKey)
 	if apiKey != "" {
-		cfg.APIKey = apiKey
+		cfg.AI.APIKey = apiKey
 	}
 
 	// API Tier
@@ -487,40 +508,44 @@ func runConfig() error {
 	fmt.Println("API Tier:")
 	fmt.Println("  1. Free (default)")
 	fmt.Println("  2. Pro")
-	fmt.Printf("  Current: %s\n", cfg.APITier)
+	fmt.Printf("  Current: %s\n", cfg.AI.APITier)
 	fmt.Print("  Select (1 or 2): ")
 
 	var tierChoice string
-	fmt.Scanln(&tierChoice)
+	_, _ = fmt.Scanln(&tierChoice)
 	switch tierChoice {
 	case "1":
-		cfg.APITier = "free"
+		cfg.AI.APITier = "free"
 	case "2":
-		cfg.APITier = "pro"
+		cfg.AI.APITier = "pro"
 	}
 
 	// Conventional Commits
 	fmt.Println()
 	fmt.Print("Use Conventional Commits format by default? (y/N): ")
 	var useConventional string
-	fmt.Scanln(&useConventional)
-	cfg.UseConventionalCommits = useConventional == "y" || useConventional == "Y"
+	_, _ = fmt.Scanln(&useConventional)
+	if useConventional == "y" || useConventional == "Y" {
+		cfg.Commits.Convention = "conventional"
+	} else {
+		cfg.Commits.Convention = "none"
+	}
 
 	// Model Selection
 	fmt.Println()
 	fmt.Println("Default Model:")
 	fmt.Println("  1. llama-3.3-70b (recommended, balanced)")
 	fmt.Println("  2. llama3.1-8b (faster, lower quality)")
-	fmt.Printf("  Current: %s\n", cfg.DefaultModel)
+	fmt.Printf("  Current: %s\n", cfg.AI.DefaultModel)
 	fmt.Print("  Select (1 or 2): ")
 
 	var modelChoice string
-	fmt.Scanln(&modelChoice)
+	_, _ = fmt.Scanln(&modelChoice)
 	switch modelChoice {
 	case "1":
-		cfg.DefaultModel = "llama-3.3-70b"
+		cfg.AI.DefaultModel = "llama-3.3-70b"
 	case "2":
-		cfg.DefaultModel = "llama3.1-8b"
+		cfg.AI.DefaultModel = "llama3.1-8b"
 	}
 
 	// Save configuration
@@ -533,6 +558,29 @@ func runConfig() error {
 	ui.PrintInfo("You're all set! Try running 'gm commit' in a git repository")
 
 	return nil
+}
+
+func runOnboard() error {
+	ui.PrintInfo("Starting GitMind setup wizard...")
+	fmt.Println()
+
+	// Get current directory
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	// Load existing config
+	cfg, err := cfgManager.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Create git operations
+	gitOps := git.NewExecOperations()
+
+	// Run onboarding wizard
+	return ui.RunOnboarding(gitOps, cfg, cfgManager, cwd)
 }
 
 func min(a, b int) int {

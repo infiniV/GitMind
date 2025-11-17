@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,8 +9,8 @@ import (
 	"github.com/yourusername/gitman/internal/domain"
 )
 
-// Config represents the application configuration.
-type Config struct {
+// Legacy Config structure for migration
+type LegacyConfig struct {
 	AIProvider             string   `json:"ai_provider"`
 	APIKey                 string   `json:"api_key"`
 	APITier                string   `json:"api_tier"`
@@ -37,19 +38,12 @@ func NewManager() (*Manager, error) {
 	}, nil
 }
 
-// Load loads the configuration from disk.
-func (m *Manager) Load() (*Config, error) {
+// Load loads the configuration from disk with automatic migration.
+func (m *Manager) Load() (*domain.Config, error) {
 	// Check if config file exists
 	if _, err := os.Stat(m.configPath); os.IsNotExist(err) {
 		// Return default config
-		return &Config{
-			AIProvider:             "cerebras",
-			UseConventionalCommits: false,
-			DefaultModel:           "llama-3.3-70b",
-			APITier:                "free",
-			ProtectedBranches:      []string{"main", "master", "develop"},
-			DefaultMergeStrategy:   "ask",
-		}, nil
+		return domain.NewDefaultConfig(), nil
 	}
 
 	// Read config file
@@ -58,50 +52,54 @@ func (m *Manager) Load() (*Config, error) {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	// Parse JSON - simple manual parsing since we only have a few fields
-	config := &Config{}
-
-	// For MVP, we'll use a simple format
-	// In production, use encoding/json
-	lines := string(data)
-	if len(lines) == 0 {
-		return config, nil
+	// Try parsing as new JSON format first
+	var cfg domain.Config
+	if err := json.Unmarshal(data, &cfg); err == nil {
+		// Successfully parsed as new format
+		return &cfg, nil
 	}
 
-	// Simple key=value parsing (JSON parsing would be better but this is quicker for MVP)
-	return parseSimpleConfig(lines)
+	// Try parsing as old key=value format
+	oldCfg, err := parseSimpleConfig(string(data))
+	if err == nil {
+		// Successfully parsed as old format, migrate
+		newCfg := m.migrateFromLegacy(oldCfg)
+
+		// Backup old config
+		backupPath := m.configPath + ".backup"
+		if err := os.WriteFile(backupPath, data, 0600); err == nil {
+			fmt.Printf("Backed up old config to: %s\n", backupPath)
+		}
+
+		// Save new format
+		if err := m.Save(newCfg); err != nil {
+			return nil, fmt.Errorf("failed to save migrated config: %w", err)
+		}
+
+		fmt.Println("Configuration migrated to new format")
+		return newCfg, nil
+	}
+
+	// Failed to parse both formats
+	return nil, fmt.Errorf("failed to parse config file (tried both new and old formats)")
 }
 
-// Save saves the configuration to disk.
-func (m *Manager) Save(config *Config) error {
+// Save saves the configuration to disk in JSON format.
+func (m *Manager) Save(config *domain.Config) error {
 	// Create config directory if it doesn't exist
 	configDir := filepath.Dir(m.configPath)
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
-	// Format config as simple key=value
-	protectedBranches := joinStrings(config.ProtectedBranches, ",")
-	if protectedBranches == "" {
-		protectedBranches = "main,master,develop"
+	// Marshal to JSON with indentation
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
 	}
-
-	mergeStrategy := config.DefaultMergeStrategy
-	if mergeStrategy == "" {
-		mergeStrategy = "ask"
-	}
-
-	content := fmt.Sprintf(`ai_provider=%s
-api_key=%s
-api_tier=%s
-use_conventional_commits=%v
-default_model=%s
-protected_branches=%s
-default_merge_strategy=%s
-`, config.AIProvider, config.APIKey, config.APITier, config.UseConventionalCommits, config.DefaultModel, protectedBranches, mergeStrategy)
 
 	// Write config file
-	if err := os.WriteFile(m.configPath, []byte(content), 0600); err != nil {
+	if err := os.WriteFile(m.configPath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 
@@ -109,18 +107,18 @@ default_merge_strategy=%s
 }
 
 // GetAPIKey returns the configured API key as a domain object.
-func (m *Manager) GetAPIKey(config *Config) (*domain.APIKey, error) {
-	if config.APIKey == "" {
-		return nil, fmt.Errorf("API key not configured. Run 'gm config' to set up")
+func (m *Manager) GetAPIKey(config *domain.Config) (*domain.APIKey, error) {
+	if config.AI.APIKey == "" {
+		return nil, fmt.Errorf("API key not configured. Run 'gm config' or 'gm onboard' to set up")
 	}
 
-	apiKey, err := domain.NewAPIKey(config.APIKey, config.AIProvider)
+	apiKey, err := domain.NewAPIKey(config.AI.APIKey, config.AI.Provider)
 	if err != nil {
 		return nil, err
 	}
 
 	// Set tier from config
-	tier, err := domain.ParseAPITier(config.APITier)
+	tier, err := domain.ParseAPITier(config.AI.APITier)
 	if err != nil {
 		tier = domain.TierFree // Default to free
 	}
@@ -134,9 +132,43 @@ func (m *Manager) ConfigPath() string {
 	return m.configPath
 }
 
-// parseSimpleConfig parses a simple key=value config format.
-func parseSimpleConfig(content string) (*Config, error) {
-	config := &Config{
+// migrateFromLegacy converts old config format to new domain.Config
+func (m *Manager) migrateFromLegacy(old *LegacyConfig) *domain.Config {
+	cfg := domain.NewDefaultConfig()
+
+	// Migrate AI settings
+	cfg.AI.Provider = old.AIProvider
+	if cfg.AI.Provider == "" {
+		cfg.AI.Provider = "cerebras"
+	}
+	cfg.AI.APIKey = old.APIKey
+	cfg.AI.APITier = old.APITier
+	if cfg.AI.APITier == "" {
+		cfg.AI.APITier = "free"
+	}
+	cfg.AI.DefaultModel = old.DefaultModel
+	if cfg.AI.DefaultModel == "" {
+		cfg.AI.DefaultModel = "llama-3.3-70b"
+	}
+
+	// Migrate git settings
+	if len(old.ProtectedBranches) > 0 {
+		cfg.Git.ProtectedBranches = old.ProtectedBranches
+	}
+
+	// Migrate commit settings
+	if old.UseConventionalCommits {
+		cfg.Commits.Convention = "conventional"
+	} else {
+		cfg.Commits.Convention = "none"
+	}
+
+	return cfg
+}
+
+// parseSimpleConfig parses the legacy key=value config format.
+func parseSimpleConfig(content string) (*LegacyConfig, error) {
+	config := &LegacyConfig{
 		AIProvider:             "cerebras",
 		UseConventionalCommits: false,
 		DefaultModel:           "llama-3.3-70b",
@@ -231,20 +263,6 @@ func splitString(s, delim string) []string {
 
 	if current != "" {
 		result = append(result, current)
-	}
-
-	return result
-}
-
-// joinStrings joins a slice of strings with delimiter
-func joinStrings(strs []string, delim string) string {
-	if len(strs) == 0 {
-		return ""
-	}
-
-	result := strs[0]
-	for i := 1; i < len(strs); i++ {
-		result += delim + strs[i]
 	}
 
 	return result

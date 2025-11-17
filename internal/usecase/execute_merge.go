@@ -77,7 +77,7 @@ func (uc *ExecuteMergeUseCase) Execute(ctx context.Context, req ExecuteMergeRequ
 
 	if err := uc.gitOps.Merge(ctx, req.RepoPath, req.SourceBranch, strategy, mergeMsg); err != nil {
 		// Attempt to abort merge on failure
-		uc.gitOps.AbortMerge(ctx, req.RepoPath)
+		_ = uc.gitOps.AbortMerge(ctx, req.RepoPath)
 		return nil, fmt.Errorf("merge failed: %w", err)
 	}
 

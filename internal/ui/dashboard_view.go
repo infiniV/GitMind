@@ -238,10 +238,11 @@ func (m DashboardModel) handleCardActivation() (tea.Model, tea.Cmd) {
 func (m DashboardModel) handleSubmenuSelection() (tea.Model, tea.Cmd) {
 	switch m.activeSubmenu {
 	case CommitOptionsMenu:
-		if m.submenuIndex == 0 {
+		switch m.submenuIndex {
+		case 0:
 			// Toggle conventional commits
 			m.useConventional = !m.useConventional
-		} else if m.submenuIndex == 2 {
+		case 2:
 			// Execute commit
 			m.action = ActionCommit
 			m.actionParams["conventional"] = m.useConventional

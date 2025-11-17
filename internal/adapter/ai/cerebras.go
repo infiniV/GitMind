@@ -225,7 +225,7 @@ func (c *CerebrasProvider) buildPrompt(request AnalysisRequest) string {
 	// Merge opportunity detection
 	if request.MergeOpportunity {
 		sb.WriteString("**MERGE OPPORTUNITY DETECTED**\n")
-		sb.WriteString(fmt.Sprintf("- Working directory is clean (no uncommitted changes)\n"))
+		sb.WriteString("- Working directory is clean (no uncommitted changes)\n")
 		sb.WriteString(fmt.Sprintf("- Branch has %d commits ready to merge into '%s'\n", request.MergeCommitCount, request.MergeTargetBranch))
 		sb.WriteString("- Consider recommending a MERGE action instead of commit\n\n")
 	}
@@ -337,7 +337,7 @@ func (c *CerebrasProvider) makeRequest(ctx context.Context, reqBody cerebrasRequ
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
