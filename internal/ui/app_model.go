@@ -64,6 +64,10 @@ type AppModel struct {
 	// Tab management
 	currentTab Tab
 
+	// Terminal dimensions
+	width  int
+	height int
+
 	// Child models
 	dashboard      *DashboardModel
 	commitView     *CommitViewModel
@@ -378,6 +382,20 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
 				return loadingTickMsg(t)
 			})
+		}
+		return m, nil
+
+	case tea.WindowSizeMsg:
+		// Update terminal dimensions
+		m.width = msg.Width
+		m.height = msg.Height
+
+		// Propagate to dashboard
+		if m.dashboard != nil {
+			updated, cmd := m.dashboard.Update(msg)
+			dashModel := updated.(DashboardModel)
+			m.dashboard = &dashModel
+			return m, cmd
 		}
 		return m, nil
 	}

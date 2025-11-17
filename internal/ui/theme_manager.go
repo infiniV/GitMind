@@ -96,6 +96,15 @@ type ThemeStyles struct {
 	FormHelp            lipgloss.Style
 	FormButton          lipgloss.Style
 	FormButtonInactive  lipgloss.Style
+
+	// Menu styles (for vertical action menu)
+	MenuSelected lipgloss.Style
+	MenuNormal   lipgloss.Style
+
+	// Git tree styles
+	TreeBranch lipgloss.Style
+	TreeCommit lipgloss.Style
+	TreeMerge  lipgloss.Style
 }
 
 // NewThemeManager creates a new theme manager with the specified theme.
@@ -378,6 +387,29 @@ func (tm *ThemeManager) regenerateStyles() {
 		Foreground(colorMuted).
 		Background(lipgloss.Color(bg.FormInput)).
 		Padding(0, 2)
+
+	// Menu styles (for vertical action menu)
+	tm.styles.MenuSelected = lipgloss.NewStyle().
+		Foreground(colorText).
+		Background(colorPrimary).
+		Bold(true).
+		Padding(0, 2)
+
+	tm.styles.MenuNormal = lipgloss.NewStyle().
+		Foreground(colorMuted).
+		Padding(0, 2)
+
+	// Git tree styles
+	tm.styles.TreeBranch = lipgloss.NewStyle().
+		Foreground(colorPrimary).
+		Bold(true)
+
+	tm.styles.TreeCommit = lipgloss.NewStyle().
+		Foreground(colorText)
+
+	tm.styles.TreeMerge = lipgloss.NewStyle().
+		Foreground(colorSecondary).
+		Bold(true)
 }
 
 // GetConfidenceBadge returns a styled confidence badge.

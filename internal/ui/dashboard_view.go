@@ -51,9 +51,17 @@ type DashboardModel struct {
 	branchInfo    *domain.BranchInfo
 	branches      []string
 	recentCommits []git.CommitInfo
-	selectedCard  int
+	selectedCard  int // Now represents selected menu item (0-7)
 	activeSubmenu ActiveSubmenu
 	submenuIndex  int
+
+	// Terminal dimensions
+	width  int
+	height int
+
+	// Git tree view (for right pane)
+	commitGraph   *domain.CommitGraph
+	gitTreeView   *GitTreeViewModel
 
 	// Submenu options
 	useConventional bool
@@ -124,6 +132,12 @@ func (m DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case errorMsg:
 		m.err = msg.err
 		m.loading = false
+		return m, nil
+
+	case tea.WindowSizeMsg:
+		// Update terminal dimensions
+		m.width = msg.Width
+		m.height = msg.Height
 		return m, nil
 
 	case tea.KeyMsg:

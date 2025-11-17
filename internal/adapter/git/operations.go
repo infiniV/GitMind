@@ -98,6 +98,18 @@ type Operations interface {
 
 	// AbortMerge aborts an in-progress merge.
 	AbortMerge(ctx context.Context, repoPath string) error
+
+	// Commit Graph Visualization Operations
+
+	// GetCommitGraph returns the full commit graph with ASCII graph visualization.
+	// Limit controls the maximum number of commits to fetch (0 = no limit).
+	GetCommitGraph(ctx context.Context, repoPath string, limit int) (*domain.CommitGraph, error)
+
+	// GetBranchTree returns all branches with their parent-child relationships.
+	GetBranchTree(ctx context.Context, repoPath string, protectedBranches []string) ([]domain.BranchNode, error)
+
+	// GetMergeStatus returns detailed merge status between source and target branches.
+	GetMergeStatus(ctx context.Context, repoPath, sourceBranch, targetBranch string) (*domain.MergeStatus, error)
 }
 
 // CommitInfo represents information about a commit.
