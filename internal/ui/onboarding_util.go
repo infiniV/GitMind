@@ -32,8 +32,8 @@ func ShouldRunOnboarding(cfg *domain.Config, gitOps git.Operations, repoPath str
 }
 
 // RunOnboarding launches the onboarding wizard
-func RunOnboarding(gitOps git.Operations, cfg *domain.Config, cfgManager *config.Manager, repoPath string) error {
-	model := NewAppModelWithOnboarding(gitOps, cfg, cfgManager, repoPath)
+func RunOnboarding(gitOps git.Operations, cfg *domain.Config, cfgManager *config.Manager, repoPath, version string) error {
+	model := NewAppModelWithOnboarding(gitOps, cfg, cfgManager, repoPath, version)
 	p := tea.NewProgram(model, tea.WithAltScreen())
 	_, err := p.Run()
 	return err

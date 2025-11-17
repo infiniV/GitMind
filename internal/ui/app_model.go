@@ -79,6 +79,13 @@ type AppModel struct {
 	cfgManager *config.Manager
 	repoPath   string
 
+	// App info
+	version string
+
+	// Window dimensions
+	windowWidth  int
+	windowHeight int
+
 	// Loading state
 	loadingMessage string
 	loadingDots    int
@@ -104,8 +111,9 @@ type AppModel struct {
 }
 
 // NewAppModel creates a new root application model
-func NewAppModel(gitOps git.Operations, aiProvider ai.Provider, cfg *domain.Config, cfgManager *config.Manager, repoPath string) AppModel {
+func NewAppModel(gitOps git.Operations, aiProvider ai.Provider, cfg *domain.Config, cfgManager *config.Manager, repoPath, version string) AppModel {
 	dashboard := NewDashboardModel(gitOps, repoPath)
+	dashboard.SetVersion(version)
 	githubOps := GitHubOps{}
 
 	return AppModel{
@@ -118,12 +126,15 @@ func NewAppModel(gitOps git.Operations, aiProvider ai.Provider, cfg *domain.Conf
 		cfg:          cfg,
 		cfgManager:   cfgManager,
 		repoPath:     repoPath,
+		version:      version,
+		windowWidth:  150,
+		windowHeight: 40,
 		actionParams: make(map[string]interface{}),
 	}
 }
 
 // NewAppModelWithOnboarding creates an AppModel that starts in onboarding mode
-func NewAppModelWithOnboarding(gitOps git.Operations, cfg *domain.Config, cfgManager *config.Manager, repoPath string) AppModel {
+func NewAppModelWithOnboarding(gitOps git.Operations, cfg *domain.Config, cfgManager *config.Manager, repoPath, version string) AppModel {
 	githubOps := GitHubOps{}
 	onboarding := NewOnboardingModel(cfg, cfgManager, gitOps, repoPath)
 
@@ -136,6 +147,9 @@ func NewAppModelWithOnboarding(gitOps git.Operations, cfg *domain.Config, cfgMan
 		cfg:            cfg,
 		cfgManager:     cfgManager,
 		repoPath:       repoPath,
+		version:        version,
+		windowWidth:    150,
+		windowHeight:   40,
 		actionParams:   make(map[string]interface{}),
 	}
 }
@@ -180,6 +194,30 @@ func (m AppModel) Init() tea.Cmd {
 // Update handles messages and updates the application state
 func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		// Update window dimensions
+		m.windowWidth = msg.Width
+		m.windowHeight = msg.Height
+
+		// Forward to child views
+		var cmd tea.Cmd
+		if m.dashboard != nil {
+			_, cmd = m.dashboard.Update(msg)
+		}
+		if m.commitView != nil {
+			_, _ = m.commitView.Update(msg)
+		}
+		if m.mergeView != nil {
+			_, _ = m.mergeView.Update(msg)
+		}
+		if m.settingsView != nil {
+			_, _ = m.settingsView.Update(msg)
+		}
+		if m.onboardingView != nil {
+			_, _ = m.onboardingView.Update(msg)
+		}
+		return m, cmd
+
 	case tea.KeyMsg:
 		// Handle error modal
 		if m.showingError {
@@ -330,6 +368,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			msg.result.Decision,
 			msg.result.TokensUsed,
 			msg.result.Model,
+			m.windowWidth,
+			m.windowHeight,
 		)
 		return m, m.commitView.Init()
 
@@ -560,6 +600,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Initialize dashboard
 			dashboard := NewDashboardModel(m.gitOps, m.repoPath)
+			dashboard.SetVersion(m.version)
 			m.dashboard = &dashboard
 
 			// Transition to dashboard
