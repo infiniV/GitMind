@@ -527,33 +527,81 @@ if msg.err != nil {
 
 **State fields in AppModel:**
 ```go
-showingConfirmation  bool
-confirmationMessage  string
-confirmationCallback func() tea.Cmd
+showingConfirmation    bool
+confirmationMessage    string
+confirmationCallback   func() tea.Cmd
+confirmationSelectedBtn int // 0 = No (default), 1 = Yes
 ```
 
 **ESC key handling flow:**
 1. User presses ESC in commit/merge view
-2. `AppModel.Update()` catches ESC key (app_model.go:236)
-3. Sets `showingConfirmation = true` and stores callback
-4. `AppModel.View()` renders confirmation dialog on top of current view
-5. User presses Y to confirm or N/ESC to cancel
-6. Callback executes if confirmed (returns to dashboard)
+2. `AppModel.Update()` catches ESC key and sets `showingConfirmation = true`
+3. `confirmationSelectedBtn` defaults to 0 (No) for safety
+4. `AppModel.View()` renders full-screen confirmation modal centered on screen
+5. User navigates with ←/→ or Tab, confirms with Enter
+6. ESC cancels (same as selecting No)
+7. Callback executes only if Yes is selected
+
+**Button navigation:**
+- `←` or `h` - Select "No" button
+- `→` or `l` - Select "Yes" button
+- `Tab` - Toggle between buttons
+- `Enter` - Confirm selected button
+- `ESC` - Cancel (same as No)
+
+**Visual design:**
+- Full-screen centered modal using `lipgloss.Place()`
+- Active button: Orange background (`#C15F3C`), black text, bold
+- Inactive button: Gray border, normal text
+- Dark background (`#1a1a1a`) with orange border
+- Warning icon (⚠) in title
+- Help text at bottom
+
+**Example rendering:**
+```
+╭────────────────────────────────────────────────────────╮
+│                                                        │
+│  ⚠ Confirmation                                        │
+│                                                        │
+│  Return to dashboard without merging?                 │
+│                                                        │
+│                                                        │
+│  ╭─────────╮  ╭─────────╮                            │
+│  │   No    │  │   Yes   │  ← Buttons (navigate with ←/→)
+│  ╰─────────╯  ╰─────────╯                            │
+│                                                        │
+│  ←/→ or Tab to switch  •  Enter to confirm  •  Esc    │
+│                                                        │
+╰────────────────────────────────────────────────────────╯
+```
 
 **Critical rendering pattern:**
 ```go
-// app_model.go:646-650
+// app_model.go:680-681 - returns ONLY the modal, blocking everything else
 if m.showingConfirmation {
-    return overlayView + "\n\n" + m.renderConfirmationDialog()
+    return m.renderConfirmationDialog()
 }
 ```
 
-This must happen **after** overlay rendering but **before** the final return, ensuring confirmation dialogs appear in all states (not just dashboard).
+The modal completely replaces the current view - it does NOT overlay on top. The `View()` function checks for `showingConfirmation` FIRST and returns only the modal, ensuring the entire screen is blocked.
+
+**Callback execution:**
+```go
+// app_model.go:209-213 - state change happens in Update, not in callback
+if selectedYes && m.confirmationCallback != nil {
+    m.state = StateDashboard  // State change here, not in callback
+    cmd := m.confirmationCallback()
+    return m, cmd
+}
+```
+
+State changes must happen in the `Update` method, not inside the callback closure, because Bubble Tea passes models by value.
 
 **Single-layer key handling:**
 - AppModel exclusively handles ESC key and shows confirmation dialog
 - Child views (CommitViewModel, MergeViewModel) do NOT handle quit keys to avoid conflicts
 - This ensures consistent confirmation behavior across all views
+- Button selection is tracked in AppModel state and resets after each use
 
 ### Common Bug Pattern
 

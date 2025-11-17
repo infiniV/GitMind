@@ -93,9 +93,10 @@ type AppModel struct {
 	actionParams map[string]interface{}
 
 	// Confirmation dialog state
-	showingConfirmation  bool
-	confirmationMessage  string
-	confirmationCallback func() tea.Cmd
+	showingConfirmation    bool
+	confirmationMessage    string
+	confirmationCallback   func() tea.Cmd
+	confirmationSelectedBtn int // 0 = No (default), 1 = Yes
 
 	// Error modal state
 	showingError bool
@@ -191,14 +192,31 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle confirmation dialog
 		if m.showingConfirmation {
 			switch msg.String() {
-			case "y", "Y":
+			case "left", "h":
+				m.confirmationSelectedBtn = 0 // No
+				return m, nil
+			case "right", "l":
+				m.confirmationSelectedBtn = 1 // Yes
+				return m, nil
+			case "tab":
+				m.confirmationSelectedBtn = (m.confirmationSelectedBtn + 1) % 2
+				return m, nil
+			case "enter":
 				m.showingConfirmation = false
-				if m.confirmationCallback != nil {
-					return m, m.confirmationCallback()
+				selectedYes := m.confirmationSelectedBtn == 1
+				m.confirmationSelectedBtn = 0 // Reset for next time
+
+				if selectedYes && m.confirmationCallback != nil {
+					// Execute callback and return to dashboard
+					m.state = StateDashboard
+					cmd := m.confirmationCallback()
+					return m, cmd
 				}
 				return m, nil
-			case "n", "N", "enter", "esc":
+			case "esc":
+				// ESC always means No
 				m.showingConfirmation = false
+				m.confirmationSelectedBtn = 0
 				return m, nil
 			}
 			return m, nil
@@ -250,9 +268,9 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case StateCommitAnalyzing:
 				// Show confirmation to cancel analysis
 				m.showingConfirmation = true
+				m.confirmationSelectedBtn = 0 // Default to No
 				m.confirmationMessage = "Cancel commit analysis?"
 				m.confirmationCallback = func() tea.Cmd {
-					m.state = StateDashboard
 					return m.dashboard.Init()
 				}
 				return m, nil
@@ -260,27 +278,27 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case StateCommitView:
 				// Show confirmation to return to dashboard
 				m.showingConfirmation = true
+				m.confirmationSelectedBtn = 0 // Default to No
 				m.confirmationMessage = "Return to dashboard without committing?"
 				m.confirmationCallback = func() tea.Cmd {
-					m.state = StateDashboard
 					return m.dashboard.Init()
 				}
 				return m, nil
 
 			case StateMergeAnalyzing:
 				m.showingConfirmation = true
+				m.confirmationSelectedBtn = 0 // Default to No
 				m.confirmationMessage = "Cancel merge analysis?"
 				m.confirmationCallback = func() tea.Cmd {
-					m.state = StateDashboard
 					return m.dashboard.Init()
 				}
 				return m, nil
 
 			case StateMergeView:
 				m.showingConfirmation = true
+				m.confirmationSelectedBtn = 0 // Default to No
 				m.confirmationMessage = "Return to dashboard without merging?"
 				m.confirmationCallback = func() tea.Cmd {
-					m.state = StateDashboard
 					return m.dashboard.Init()
 				}
 				return m, nil
@@ -658,12 +676,27 @@ func (m AppModel) View() string {
 			}
 		}
 
-		// Show confirmation dialog if active (must render on top of overlay)
+		// Show confirmation dialog if active (completely blocks screen)
 		if m.showingConfirmation {
-			return overlayView + "\n\n" + m.renderConfirmationDialog()
+			return m.renderConfirmationDialog()
+		}
+
+		// Show error modal if active (completely blocks screen)
+		if m.showingError {
+			return m.renderErrorModal()
 		}
 
 		return overlayView
+	}
+
+	// Show confirmation dialog if active (highest priority - blocks dashboard)
+	if m.showingConfirmation {
+		return m.renderConfirmationDialog()
+	}
+
+	// Show error modal if active (blocks dashboard)
+	if m.showingError {
+		return m.renderErrorModal()
 	}
 
 	// Render tab bar
@@ -684,16 +717,6 @@ func (m AppModel) View() string {
 	// Combine tab bar and content
 	view := tabBar + "\n" + content
 
-	// Show error modal if active (highest priority)
-	if m.showingError {
-		return view + "\n\n" + m.renderErrorModal()
-	}
-
-	// Show confirmation dialog if active
-	if m.showingConfirmation {
-		return view + "\n\n" + m.renderConfirmationDialog()
-	}
-
 	return view
 }
 
@@ -712,14 +735,80 @@ func (m AppModel) renderLoadingOverlay() string {
 	return "\n\n" + box
 }
 
-// renderConfirmationDialog renders a confirmation dialog
+// renderConfirmationDialog renders a full-screen confirmation dialog with buttons
 func (m AppModel) renderConfirmationDialog() string {
-	message := warningStyle.Render(m.confirmationMessage)
-	prompt := footerStyle.Render("[y/N]")
+	// Title
+	title := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(colorText).
+		Render("⚠ Confirmation")
 
-	content := message + "\n\n" + prompt
+	// Message
+	message := lipgloss.NewStyle().
+		Foreground(colorText).
+		Render(m.confirmationMessage)
 
-	return commitBoxStyle.Render(content)
+	// Button styles
+	buttonStyle := lipgloss.NewStyle().
+		Padding(0, 3).
+		MarginRight(2).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorMuted)
+
+	buttonActiveStyle := lipgloss.NewStyle().
+		Padding(0, 3).
+		MarginRight(2).
+		Bold(true).
+		Background(colorPrimary).
+		Foreground(lipgloss.Color("#000000")).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorPrimary)
+
+	// Render buttons
+	noBtn := "No"
+	yesBtn := "Yes"
+
+	if m.confirmationSelectedBtn == 0 {
+		noBtn = buttonActiveStyle.Render(noBtn)
+		yesBtn = buttonStyle.Render(yesBtn)
+	} else {
+		noBtn = buttonStyle.Render(noBtn)
+		yesBtn = buttonActiveStyle.Render(yesBtn)
+	}
+
+	buttons := lipgloss.JoinHorizontal(lipgloss.Left, noBtn, yesBtn)
+
+	// Help text
+	helpText := lipgloss.NewStyle().
+		Foreground(colorMuted).
+		Render("←/→ or Tab to switch  •  Enter to confirm  •  Esc to cancel")
+
+	// Combine all elements
+	content := lipgloss.JoinVertical(
+		lipgloss.Left,
+		title,
+		"",
+		message,
+		"",
+		"",
+		buttons,
+		"",
+		helpText,
+	)
+
+	// Create a modal box with primary color background
+	modalStyle := lipgloss.NewStyle().
+		Padding(2, 4).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorPrimary).
+		Background(lipgloss.Color("#1a1a1a")). // Dark background
+		Width(60)
+
+	return "\n\n" + lipgloss.Place(
+		80, 20,
+		lipgloss.Center, lipgloss.Center,
+		modalStyle.Render(content),
+	)
 }
 
 // renderErrorModal renders an error modal
