@@ -244,9 +244,10 @@ func (m OnboardingGitHubScreen) Update(msg tea.Msg) (OnboardingGitHubScreen, tea
 
 		default:
 			// Handle text input
-			if m.focusedField == 0 {
+			switch m.focusedField {
+			case 0:
 				m.repoName.Update(msg)
-			} else if m.focusedField == 1 {
+			case 1:
 				m.description.Update(msg)
 			}
 			return m, nil

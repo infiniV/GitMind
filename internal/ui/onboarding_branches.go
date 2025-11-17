@@ -78,16 +78,17 @@ func (m OnboardingBranchesScreen) Update(msg tea.Msg) (OnboardingBranchesScreen,
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "enter":
-			if m.focusedField == 4 {
+			switch m.focusedField {
+			case 4:
 				// Save and continue
 				m.saveToConfig()
 				m.shouldContinue = true
 				return m, nil
-			} else if m.focusedField == 1 {
+			case 1:
 				// Toggle focused checkbox in group
 				m.protectedBranches.Toggle()
 				return m, nil
-			} else if m.focusedField == 2 {
+			case 2:
 				// Add custom protected branch
 				if m.customProtected.Value != "" {
 					// Add to protected branches list
@@ -96,9 +97,8 @@ func (m OnboardingBranchesScreen) Update(msg tea.Msg) (OnboardingBranchesScreen,
 					m.customProtected.Value = ""
 				}
 				return m, nil
-			} else if m.focusedField == 3 {
-				// Toggle auto-push/pull checkboxes handled below
 			}
+			// Note: field 3 toggles are handled elsewhere
 			return m, nil
 
 		case "tab", "down":
@@ -110,26 +110,29 @@ func (m OnboardingBranchesScreen) Update(msg tea.Msg) (OnboardingBranchesScreen,
 			return m, nil
 
 		case "left":
-			if m.focusedField == 0 {
+			switch m.focusedField {
+			case 0:
 				m.shouldGoBack = true
 				return m, nil
-			} else if m.focusedField == 1 {
+			case 1:
 				m.protectedBranches.Previous()
 				return m, nil
 			}
 			return m, nil
 
 		case "right":
-			if m.focusedField == 1 {
+			switch m.focusedField {
+			case 1:
 				m.protectedBranches.Next()
 				return m, nil
 			}
 			return m, nil
 
 		case "space":
-			if m.focusedField == 1 {
+			switch m.focusedField {
+			case 1:
 				m.protectedBranches.Toggle()
-			} else if m.focusedField == 3 {
+			case 3:
 				// Toggle auto-push
 				m.autoPush.Toggle()
 			}
@@ -142,9 +145,10 @@ func (m OnboardingBranchesScreen) Update(msg tea.Msg) (OnboardingBranchesScreen,
 
 		default:
 			// Handle text input
-			if m.focusedField == 0 {
+			switch m.focusedField {
+			case 0:
 				m.mainBranch.Update(msg)
-			} else if m.focusedField == 2 {
+			case 2:
 				m.customProtected.Update(msg)
 			}
 			return m, nil

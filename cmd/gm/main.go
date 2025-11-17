@@ -481,7 +481,7 @@ func runConfig() error {
 	fmt.Print("  Press Enter to keep current or type new provider: ")
 
 	var provider string
-	fmt.Scanln(&provider)
+	_, _ = fmt.Scanln(&provider)
 	if provider != "" {
 		cfg.AI.Provider = provider
 	}
@@ -498,7 +498,7 @@ func runConfig() error {
 	}
 
 	var apiKey string
-	fmt.Scanln(&apiKey)
+	_, _ = fmt.Scanln(&apiKey)
 	if apiKey != "" {
 		cfg.AI.APIKey = apiKey
 	}
@@ -512,7 +512,7 @@ func runConfig() error {
 	fmt.Print("  Select (1 or 2): ")
 
 	var tierChoice string
-	fmt.Scanln(&tierChoice)
+	_, _ = fmt.Scanln(&tierChoice)
 	switch tierChoice {
 	case "1":
 		cfg.AI.APITier = "free"
@@ -524,7 +524,7 @@ func runConfig() error {
 	fmt.Println()
 	fmt.Print("Use Conventional Commits format by default? (y/N): ")
 	var useConventional string
-	fmt.Scanln(&useConventional)
+	_, _ = fmt.Scanln(&useConventional)
 	if useConventional == "y" || useConventional == "Y" {
 		cfg.Commits.Convention = "conventional"
 	} else {
@@ -540,7 +540,7 @@ func runConfig() error {
 	fmt.Print("  Select (1 or 2): ")
 
 	var modelChoice string
-	fmt.Scanln(&modelChoice)
+	_, _ = fmt.Scanln(&modelChoice)
 	switch modelChoice {
 	case "1":
 		cfg.AI.DefaultModel = "llama-3.3-70b"

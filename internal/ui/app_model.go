@@ -39,8 +39,7 @@ const (
 // AppModel is the root model that manages the entire application lifecycle
 type AppModel struct {
 	// State management
-	state         AppState
-	previousState AppState
+	state AppState
 
 	// Tab management
 	currentTab Tab

@@ -158,44 +158,6 @@ func (m OnboardingModel) View() string {
 	return "Loading..."
 }
 
-// Helper methods for screen initialization
-func (m OnboardingModel) initCurrentScreen() tea.Cmd {
-	switch m.state {
-	case OnboardingWelcome:
-		screen := NewOnboardingWelcomeScreen(m.currentStep, m.totalSteps)
-		m.welcomeScreen = &screen
-		return screen.Init()
-	case OnboardingGitInit:
-		screen := NewOnboardingGitInitScreen(m.currentStep, m.totalSteps, m.gitOps, m.repoPath)
-		m.gitInitScreen = &screen
-		return screen.Init()
-	case OnboardingGitHub:
-		screen := NewOnboardingGitHubScreen(m.currentStep, m.totalSteps, m.config, m.repoPath)
-		m.githubScreen = &screen
-		return screen.Init()
-	case OnboardingBranches:
-		screen := NewOnboardingBranchesScreen(m.currentStep, m.totalSteps, m.config)
-		m.branchesScreen = &screen
-		return screen.Init()
-	case OnboardingCommits:
-		screen := NewOnboardingCommitsScreen(m.currentStep, m.totalSteps, m.config)
-		m.commitsScreen = &screen
-		return screen.Init()
-	case OnboardingNaming:
-		screen := NewOnboardingNamingScreen(m.currentStep, m.totalSteps, m.config)
-		m.namingScreen = &screen
-		return screen.Init()
-	case OnboardingAI:
-		screen := NewOnboardingAIScreen(m.currentStep, m.totalSteps, m.config)
-		m.aiScreen = &screen
-		return screen.Init()
-	case OnboardingSummary:
-		screen := NewOnboardingSummaryScreen(m.currentStep, m.totalSteps, m.config)
-		m.summaryScreen = &screen
-		return screen.Init()
-	}
-	return nil
-}
 
 // Helper methods for screen updates (to be implemented with each screen)
 func (m OnboardingModel) updateWelcomeScreen(msg tea.Msg) (OnboardingModel, tea.Cmd) {

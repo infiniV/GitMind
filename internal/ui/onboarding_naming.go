@@ -88,12 +88,13 @@ func (m OnboardingNamingScreen) Update(msg tea.Msg) (OnboardingNamingScreen, tea
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "enter":
-			if m.focusedField == 4 {
+			switch m.focusedField {
+			case 4:
 				// Save and continue
 				m.saveToConfig()
 				m.shouldContinue = true
 				return m, nil
-			} else if m.focusedField == 3 {
+			case 3:
 				// Add custom prefix
 				if m.customPrefix.Value != "" {
 					m.allowedPrefixes.Items = append(m.allowedPrefixes.Items,
@@ -114,10 +115,11 @@ func (m OnboardingNamingScreen) Update(msg tea.Msg) (OnboardingNamingScreen, tea
 			return m, nil
 
 		case "left":
-			if m.focusedField == 0 {
+			switch m.focusedField {
+			case 0:
 				m.shouldGoBack = true
 				return m, nil
-			} else if m.focusedField == 2 {
+			case 2:
 				m.allowedPrefixes.Previous()
 				return m, nil
 			}
@@ -131,10 +133,11 @@ func (m OnboardingNamingScreen) Update(msg tea.Msg) (OnboardingNamingScreen, tea
 			return m, nil
 
 		case "space":
-			if m.focusedField == 0 {
+			switch m.focusedField {
+			case 0:
 				m.enforce.Toggle()
 				m.updatePreview()
-			} else if m.focusedField == 2 {
+			case 2:
 				m.allowedPrefixes.Toggle()
 				m.updatePreview()
 			}
@@ -142,10 +145,11 @@ func (m OnboardingNamingScreen) Update(msg tea.Msg) (OnboardingNamingScreen, tea
 
 		default:
 			// Handle text input
-			if m.focusedField == 1 {
+			switch m.focusedField {
+			case 1:
 				m.pattern.Update(msg)
 				m.updatePreview()
-			} else if m.focusedField == 3 {
+			case 3:
 				m.customPrefix.Update(msg)
 			}
 			return m, nil

@@ -20,7 +20,6 @@ type OnboardingGitInitScreen struct {
 
 	isGitRepo      bool
 	hasRemote      bool
-	shouldInit     bool
 	initComplete   bool
 	shouldContinue bool
 	shouldGoBack   bool

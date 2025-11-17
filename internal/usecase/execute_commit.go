@@ -107,10 +107,8 @@ func (uc *ExecuteCommitUseCase) Execute(ctx context.Context, req ExecuteCommitRe
 			}
 
 			// Store parent branch in git config for later reference
-			if err := uc.gitOps.SetParentBranch(ctx, req.RepoPath, req.BranchName, currentBranch); err != nil {
-				// Non-fatal - just log and continue
-				// This is metadata, not critical for git operations
-			}
+			// Non-fatal if it fails - this is just metadata
+			_ = uc.gitOps.SetParentBranch(ctx, req.RepoPath, req.BranchName, currentBranch)
 
 			// NOW stage files on the new branch
 			if req.StageAll {

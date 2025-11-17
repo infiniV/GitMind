@@ -117,11 +117,12 @@ func (m OnboardingSummaryScreen) View() string {
 	sections = append(sections, sectionHeaderStyle.Render("Commit Conventions"))
 	sections = append(sections, "")
 	sections = append(sections, m.renderKeyValue("Convention", m.capitalizeFirst(m.config.Commits.Convention)))
-	if m.config.Commits.Convention == "conventional" {
+	switch m.config.Commits.Convention {
+	case "conventional":
 		sections = append(sections, m.renderKeyValue("Allowed Types", strings.Join(m.config.Commits.Types, ", ")))
 		sections = append(sections, m.renderKeyValue("Require Scope", m.boolToString(m.config.Commits.RequireScope)))
 		sections = append(sections, m.renderKeyValue("Require Breaking", m.boolToString(m.config.Commits.RequireBreaking)))
-	} else if m.config.Commits.Convention == "custom" {
+	case "custom":
 		sections = append(sections, m.renderKeyValue("Template", m.config.Commits.CustomTemplate))
 	}
 

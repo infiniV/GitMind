@@ -77,19 +77,6 @@ var (
 				Foreground(colorSelected).
 				Bold(true)
 
-	// Confidence badge styles
-	highConfidenceStyle = lipgloss.NewStyle().
-				Foreground(colorHighConfidence).
-				Bold(true)
-
-	mediumConfidenceStyle = lipgloss.NewStyle().
-				Foreground(colorMediumConfidence).
-				Bold(true)
-
-	lowConfidenceStyle = lipgloss.NewStyle().
-				Foreground(colorLowConfidence).
-				Bold(true)
-
 	// Description style
 	descriptionStyle = lipgloss.NewStyle().
 				Foreground(colorMuted).
@@ -133,13 +120,6 @@ var (
 	cardTitleStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(colorPrimary)
-
-	cardContentStyle = lipgloss.NewStyle().
-				Foreground(colorMuted)
-
-	cardIconStyle = lipgloss.NewStyle().
-			Foreground(colorSecondary).
-			Bold(true)
 
 	// Status indicator styles
 	statusOkStyle = lipgloss.NewStyle().
@@ -192,12 +172,6 @@ var (
 	badgeLowStyle = lipgloss.NewStyle().
 				Foreground(colorLowConfidence).
 				Background(lipgloss.Color("#3A1F1F")).
-				Padding(0, 1).
-				Bold(true)
-
-	badgeInfoStyle = lipgloss.NewStyle().
-				Foreground(colorPrimary).
-				Background(lipgloss.Color("#2F2A1F")).
 				Padding(0, 1).
 				Bold(true)
 
@@ -287,15 +261,6 @@ var (
 )
 
 // Helper functions for confidence levels
-func getConfidenceStyle(confidence float64) lipgloss.Style {
-	if confidence >= 0.7 {
-		return highConfidenceStyle
-	} else if confidence >= 0.5 {
-		return mediumConfidenceStyle
-	}
-	return lowConfidenceStyle
-}
-
 func getConfidenceLabel(confidence float64) string {
 	if confidence >= 0.7 {
 		return "HIGH"

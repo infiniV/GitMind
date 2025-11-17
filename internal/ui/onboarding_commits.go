@@ -55,9 +55,10 @@ func NewOnboardingCommitsScreen(step, totalSteps int, config *domain.Config) Onb
 
 	// Determine convention index
 	conventionIdx := 0 // Conventional Commits
-	if config.Commits.Convention == "custom" {
+	switch config.Commits.Convention {
+	case "custom":
 		conventionIdx = 1
-	} else if config.Commits.Convention == "none" {
+	case "none":
 		conventionIdx = 2
 	}
 
@@ -118,38 +119,41 @@ func (m OnboardingCommitsScreen) Update(msg tea.Msg) (OnboardingCommitsScreen, t
 			return m, nil
 
 		case "left":
-			if m.focusedField == 0 {
+			switch m.focusedField {
+			case 0:
 				m.convention.Previous()
 				m.updatePreview()
 				return m, nil
-			} else if m.focusedField == 1 {
+			case 1:
 				m.commitTypes.Previous()
 				return m, nil
 			}
 			return m, nil
 
 		case "right":
-			if m.focusedField == 0 {
+			switch m.focusedField {
+			case 0:
 				m.convention.Next()
 				m.updatePreview()
 				return m, nil
-			} else if m.focusedField == 1 {
+			case 1:
 				m.commitTypes.Next()
 				return m, nil
 			}
 			return m, nil
 
 		case "space":
-			if m.focusedField == 0 {
+			switch m.focusedField {
+			case 0:
 				m.convention.Next()
 				m.updatePreview()
-			} else if m.focusedField == 1 {
+			case 1:
 				m.commitTypes.Toggle()
 				m.updatePreview()
-			} else if m.focusedField == 2 {
+			case 2:
 				m.requireScope.Toggle()
 				m.updatePreview()
-			} else if m.focusedField == 3 {
+			case 3:
 				m.requireBreaking.Toggle()
 				m.updatePreview()
 			}

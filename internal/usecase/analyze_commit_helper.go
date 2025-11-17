@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -60,7 +59,7 @@ func (uc *AnalyzeCommitUseCase) buildUntrackedFilesDiff(repoPath string, repo *d
 		}
 
 		// Add diff-like output
-		sb.WriteString(fmt.Sprintf("--- /dev/null\n"))
+		sb.WriteString("--- /dev/null\n")
 		sb.WriteString(fmt.Sprintf("+++ %s\n", change.Path))
 
 		// Add file content with + prefix (like a diff)
@@ -106,19 +105,3 @@ func isBinary(content []byte) bool {
 	return false
 }
 
-// readFilePreview reads up to maxBytes from a file
-func readFilePreview(filePath string, maxBytes int64) ([]byte, error) {
-	file, err := os.Open(filePath)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	buffer := make([]byte, maxBytes)
-	n, err := file.Read(buffer)
-	if err != nil && err != io.EOF {
-		return nil, err
-	}
-
-	return buffer[:n], nil
-}

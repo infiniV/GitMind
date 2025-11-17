@@ -102,7 +102,8 @@ func (m OnboardingAIScreen) Update(msg tea.Msg) (OnboardingAIScreen, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "enter":
-			if m.focusedField == 7 {
+			switch m.focusedField {
+			case 7:
 				// Validate and save
 				if m.apiKey.Value == "" {
 					m.error = "API key is required"
@@ -111,11 +112,11 @@ func (m OnboardingAIScreen) Update(msg tea.Msg) (OnboardingAIScreen, tea.Cmd) {
 				m.saveToConfig()
 				m.shouldContinue = true
 				return m, nil
-			} else if m.focusedField == 0 {
+			case 0:
 				m.provider.Toggle()
-			} else if m.focusedField == 3 {
+			case 3:
 				m.defaultModel.Toggle()
-			} else if m.focusedField == 4 {
+			case 4:
 				m.fallbackModel.Toggle()
 			}
 			return m, nil
@@ -156,19 +157,21 @@ func (m OnboardingAIScreen) Update(msg tea.Msg) (OnboardingAIScreen, tea.Cmd) {
 			return m, nil
 
 		case "space":
-			if m.focusedField == 2 {
+			switch m.focusedField {
+			case 2:
 				m.apiTier.Next()
-			} else if m.focusedField == 6 {
+			case 6:
 				m.includeContext.Toggle()
 			}
 			return m, nil
 
 		default:
 			// Handle text input
-			if m.focusedField == 1 {
+			switch m.focusedField {
+			case 1:
 				m.apiKey.Update(msg)
 				m.error = "" // Clear error on input
-			} else if m.focusedField == 5 {
+			case 5:
 				m.maxDiffSize.Update(msg)
 			}
 			return m, nil
@@ -189,7 +192,7 @@ func (m *OnboardingAIScreen) saveToConfig() {
 
 	// Parse max diff size
 	var maxDiff int
-	fmt.Sscanf(m.maxDiffSize.Value, "%d", &maxDiff)
+	_, _ = fmt.Sscanf(m.maxDiffSize.Value, "%d", &maxDiff)
 	if maxDiff > 0 {
 		m.config.AI.MaxDiffSize = maxDiff
 	} else {

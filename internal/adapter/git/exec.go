@@ -118,11 +118,9 @@ func (e *ExecOperations) GetStatus(ctx context.Context, repoPath string) (*domai
 		return nil, err
 	}
 
-	// Get line stats for each file
-	if err := e.populateLineStats(ctx, repoPath, changes); err != nil {
-		// Non-fatal - continue with 0 stats if we can't get them
-		// This can happen with untracked files or binary files
-	}
+	// Get line stats for each file (non-fatal if it fails)
+	// This can fail with untracked files or binary files
+	_ = e.populateLineStats(ctx, repoPath, changes)
 
 	repo.SetChanges(changes)
 	repo.SetIsClean(len(changes) == 0)
@@ -243,10 +241,10 @@ func (e *ExecOperations) getDiffStats(ctx context.Context, repoPath string, stag
 
 		// Parse added/deleted (can be "-" for binary files)
 		if parts[0] != "-" {
-			fmt.Sscanf(parts[0], "%d", &added)
+			_, _ = fmt.Sscanf(parts[0], "%d", &added)
 		}
 		if parts[1] != "-" {
-			fmt.Sscanf(parts[1], "%d", &deleted)
+			_, _ = fmt.Sscanf(parts[1], "%d", &deleted)
 		}
 
 		filePath := parts[2]
@@ -578,14 +576,10 @@ func (e *ExecOperations) ListBranches(ctx context.Context, repoPath string, incl
 		}
 
 		// Remove * marker for current branch
-		if strings.HasPrefix(line, "* ") {
-			line = strings.TrimPrefix(line, "* ")
-		}
+		line = strings.TrimPrefix(line, "* ")
 
 		// Remove remotes/ prefix if present
-		if strings.HasPrefix(line, "remotes/") {
-			line = strings.TrimPrefix(line, "remotes/")
-		}
+		line = strings.TrimPrefix(line, "remotes/")
 
 		branches = append(branches, line)
 	}
@@ -612,8 +606,8 @@ func (e *ExecOperations) GetDivergence(ctx context.Context, repoPath, branch1, b
 		return 0, 0, fmt.Errorf("unexpected output format: %s", stdout)
 	}
 
-	fmt.Sscanf(parts[0], "%d", &behind)
-	fmt.Sscanf(parts[1], "%d", &ahead)
+	_, _ = fmt.Sscanf(parts[0], "%d", &behind)
+	_, _ = fmt.Sscanf(parts[1], "%d", &ahead)
 
 	return ahead, behind, nil
 }
@@ -731,14 +725,14 @@ func (e *ExecOperations) CanMerge(ctx context.Context, repoPath, sourceBranch, t
 			return false, nil, fmt.Errorf("failed to checkout target branch: %w", err)
 		}
 		// Ensure we return to original branch
-		defer e.CheckoutBranch(ctx, repoPath, currentBranch)
+		defer func() { _ = e.CheckoutBranch(ctx, repoPath, currentBranch) }()
 	}
 
 	// Try merge with --no-commit --no-ff to preview
 	_, stderr, err := e.execGit(ctx, repoPath, "merge", "--no-commit", "--no-ff", sourceBranch)
 
 	// Always abort the merge preview
-	defer e.AbortMerge(ctx, repoPath)
+	defer func() { _ = e.AbortMerge(ctx, repoPath) }()
 
 	if err != nil {
 		if strings.Contains(stderr, "CONFLICT") {

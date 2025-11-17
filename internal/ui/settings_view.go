@@ -106,9 +106,10 @@ func NewSettingsView(cfg *domain.Config, cfgManager *config.Manager) *SettingsVi
 	}
 
 	conventionIdx := 0
-	if cfg.Commits.Convention == "custom" {
+	switch cfg.Commits.Convention {
+	case "custom":
 		conventionIdx = 1
-	} else if cfg.Commits.Convention == "none" {
+	case "none":
 		conventionIdx = 2
 	}
 
@@ -384,9 +385,10 @@ func (m *SettingsView) handleLeftKey() {
 		}
 
 	case SettingsCommits:
-		if m.focusedField == 0 {
+		switch m.focusedField {
+		case 0:
 			m.commitConvention.Previous()
-		} else if m.focusedField == 1 {
+		case 1:
 			m.commitTypes.Previous()
 		}
 
@@ -426,26 +428,35 @@ func (m *SettingsView) handleRightKey() {
 		}
 
 	case SettingsCommits:
-		if m.focusedField == 0 {
+		switch m.focusedField {
+		case 0:
 			m.commitConvention.Next()
-		} else if m.focusedField == 1 {
+		case 1:
 			m.commitTypes.Next()
 		}
 
 	case SettingsNaming:
-		if m.focusedField == 2 {
+		switch m.focusedField {
+		case 2:
 			m.namingAllowedPrefixes.Next()
 		}
 
 	case SettingsAI:
-		if m.focusedField == 0 && m.aiProvider.Open {
-			m.aiProvider.Next()
-		} else if m.focusedField == 2 {
+		switch m.focusedField {
+		case 0:
+			if m.aiProvider.Open {
+				m.aiProvider.Next()
+			}
+		case 2:
 			m.aiAPITier.Next()
-		} else if m.focusedField == 3 && m.aiDefaultModel.Open {
-			m.aiDefaultModel.Next()
-		} else if m.focusedField == 4 && m.aiFallbackModel.Open {
-			m.aiFallbackModel.Next()
+		case 3:
+			if m.aiDefaultModel.Open {
+				m.aiDefaultModel.Next()
+			}
+		case 4:
+			if m.aiFallbackModel.Open {
+				m.aiFallbackModel.Next()
+			}
 		}
 	}
 }
@@ -454,28 +465,34 @@ func (m *SettingsView) handleRightKey() {
 func (m *SettingsView) handleTextInput(msg tea.KeyMsg) {
 	switch m.currentTab {
 	case SettingsGit:
-		if m.focusedField == 0 {
+		switch m.focusedField {
+		case 0:
 			m.gitMainBranch.Update(msg)
-		} else if m.focusedField == 2 {
+		case 2:
 			m.gitCustomProtected.Update(msg)
 		}
 
 	case SettingsCommits:
-		if m.focusedField == 4 && m.commitConvention.Selected == 1 {
-			m.commitCustomTemplate.Update(msg)
+		switch m.focusedField {
+		case 4:
+			if m.commitConvention.Selected == 1 {
+				m.commitCustomTemplate.Update(msg)
+			}
 		}
 
 	case SettingsNaming:
-		if m.focusedField == 1 {
+		switch m.focusedField {
+		case 1:
 			m.namingPattern.Update(msg)
-		} else if m.focusedField == 3 {
+		case 3:
 			m.namingCustomPrefix.Update(msg)
 		}
 
 	case SettingsAI:
-		if m.focusedField == 1 {
+		switch m.focusedField {
+		case 1:
 			m.aiAPIKey.Update(msg)
-		} else if m.focusedField == 5 {
+		case 5:
 			m.aiMaxDiffSize.Update(msg)
 		}
 	}
@@ -553,9 +570,7 @@ func (m *SettingsView) updateConfigFromFields() {
 
 	// Parse max diff size
 	if m.aiMaxDiffSize.Value != "" {
-		if size, err := fmt.Sscanf(m.aiMaxDiffSize.Value, "%d", &m.cfg.AI.MaxDiffSize); err == nil && size > 0 {
-			// Successfully parsed
-		}
+		_, _ = fmt.Sscanf(m.aiMaxDiffSize.Value, "%d", &m.cfg.AI.MaxDiffSize)
 	}
 }
 
