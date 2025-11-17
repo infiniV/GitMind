@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/yourusername/gitman/internal/usecase"
@@ -18,6 +19,10 @@ type MergeViewModel struct {
 	returnToDashboard bool
 	hasDecision       bool
 	err               error
+	viewport          viewport.Model
+	ready             bool
+	windowWidth       int
+	windowHeight      int
 }
 
 // MergeStrategy represents a selectable merge strategy.
@@ -32,14 +37,26 @@ type MergeStrategy struct {
 func NewMergeViewModel(analysis *usecase.AnalyzeMergeResponse) MergeViewModel {
 	strategies := buildMergeStrategies(analysis)
 
-	return MergeViewModel{
+	// Initialize viewport with default size (will be updated on first WindowSizeMsg)
+	vp := viewport.New(50, 20)
+
+	m := MergeViewModel{
 		analysis:          analysis,
 		selectedIndex:     0,
 		strategies:        strategies,
 		confirmed:         false,
 		returnToDashboard: false,
 		hasDecision:       false,
+		viewport:          vp,
+		ready:             true, // Set ready immediately
+		windowWidth:       120,  // Default width
+		windowHeight:      30,   // Default height
 	}
+
+	// Set initial viewport content
+	m.viewport.SetContent(m.renderStrategiesContent())
+
+	return m
 }
 
 func buildMergeStrategies(analysis *usecase.AnalyzeMergeResponse) []MergeStrategy {
@@ -86,17 +103,42 @@ func (m MergeViewModel) Init() tea.Cmd {
 
 // Update handles messages.
 func (m MergeViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.windowWidth = msg.Width
+		m.windowHeight = msg.Height
+
+		// Update viewport size on window resize
+		// Match the pane width calculation
+		viewportWidth := (msg.Width / 2) - 8
+		viewportHeight := msg.Height - 15 // Account for header, footer, etc.
+		if viewportHeight < 5 {
+			viewportHeight = 5
+		}
+		if viewportWidth < 30 {
+			viewportWidth = 30
+		}
+		m.viewport.Width = viewportWidth
+		m.viewport.Height = viewportHeight
+
+		return m, nil
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "up", "k":
 			if m.selectedIndex > 0 {
 				m.selectedIndex--
+				// Update viewport content to reflect selection
+				m.viewport.SetContent(m.renderStrategiesContent())
 			}
 
 		case "down", "j":
 			if m.selectedIndex < len(m.strategies)-1 {
 				m.selectedIndex++
+				// Update viewport content to reflect selection
+				m.viewport.SetContent(m.renderStrategiesContent())
 			}
 
 		case "enter":
@@ -107,10 +149,13 @@ func (m MergeViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	return m, nil
+	// Update viewport (handles scrolling)
+	m.viewport, cmd = m.viewport.Update(msg)
+
+	return m, cmd
 }
 
-// View renders the UI.
+// View renders the UI with two-pane layout.
 func (m MergeViewModel) View() string {
 	styles := GetGlobalThemeManager().GetStyles()
 	if m.err != nil {
@@ -120,49 +165,109 @@ func (m MergeViewModel) View() string {
 			Render(fmt.Sprintf("ERROR: %v\n", m.err))
 	}
 
-	var sections []string
+	if !m.ready {
+		return lipgloss.NewStyle().
+			Foreground(styles.ColorMuted).
+			Render("Initializing merge view...")
+	}
 
-	// Header
-	header := styles.Header.Render("GitMind - Merge Assistant")
-	sections = append(sections, header)
+	// Calculate pane widths - more conservative to prevent cutoff
+	leftWidth := (m.windowWidth / 2) - 4
+	rightWidth := (m.windowWidth / 2) - 4
 
-	// Merge info
+	// LEFT PANE: ASCII art, merge info, commits, merge message
+	var leftSections []string
+
+	// ASCII art header for MERGE
+	logoStyle := lipgloss.NewStyle().
+		Foreground(styles.ColorPrimary).
+		Bold(true)
+
+	logo := logoStyle.Render(
+		`  ███╗   ███╗███████╗██████╗  ██████╗ ███████╗
+  ████╗ ████║██╔════╝██╔══██╗██╔════╝ ██╔════╝
+  ██╔████╔██║█████╗  ██████╔╝██║  ███╗█████╗
+  ██║╚██╔╝██║██╔══╝  ██╔══██╗██║   ██║██╔══╝
+  ██║ ╚═╝ ██║███████╗██║  ██║╚██████╔╝███████╗
+  ╚═╝     ╚═╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝`)
+
+	leftSections = append(leftSections, logo)
+	leftSections = append(leftSections, "")
+
 	mergeInfo := m.renderMergeInfo()
-	sections = append(sections, mergeInfo)
+	leftSections = append(leftSections, mergeInfo)
 
 	// Conflict warning
 	if !m.analysis.CanMerge {
 		warning := styles.Warning.Render("[WARNING]") + " " +
 			lipgloss.NewStyle().Foreground(styles.ColorError).Render(
-				"Merge conflicts detected! Manual resolution required.")
-		sections = append(sections, warning)
+				"Conflicts detected")
+		leftSections = append(leftSections, warning)
 
 		// Show conflicts
 		conflictList := m.renderConflicts()
-		sections = append(sections, conflictList)
+		leftSections = append(leftSections, conflictList)
 	}
+
+	leftSections = append(leftSections, "")
 
 	// Commits to merge
 	commitsSection := m.renderCommits()
-	sections = append(sections, commitsSection)
+	leftSections = append(leftSections, commitsSection)
+
+	leftSections = append(leftSections, "")
 
 	// Merge message box
 	messageBox := m.renderMergeMessage()
-	sections = append(sections, messageBox)
+	leftSections = append(leftSections, messageBox)
 
-	// AI reasoning
-	reasoning := m.renderReasoning()
-	sections = append(sections, reasoning)
+	leftPane := lipgloss.NewStyle().
+		Width(leftWidth).
+		Render(lipgloss.JoinVertical(lipgloss.Left, leftSections...))
 
-	// Strategy selection
-	strategySection := m.renderStrategies()
-	sections = append(sections, strategySection)
+	// RIGHT PANE: Strategy selection with viewport
+	var rightSections []string
 
-	// Footer
+	strategiesTitle := styles.SectionTitle.Render("Select merge strategy:")
+	rightSections = append(rightSections, strategiesTitle)
+	rightSections = append(rightSections, "")
+
+	// Viewport with scrollable strategies
+	viewportContent := m.viewport.View()
+	rightSections = append(rightSections, viewportContent)
+
+	// AI reasoning (if available)
+	if m.analysis.Reasoning != "" {
+		rightSections = append(rightSections, "")
+		reasoning := m.renderReasoning()
+		rightSections = append(rightSections, reasoning)
+	}
+
+	// Scroll indicator
+	if m.viewport.TotalLineCount() > m.viewport.Height {
+		scrollIndicator := lipgloss.NewStyle().
+			Foreground(styles.ColorMuted).
+			Render(fmt.Sprintf("(%d%% scrolled)", int(m.viewport.ScrollPercent()*100)))
+		rightSections = append(rightSections, "")
+		rightSections = append(rightSections, scrollIndicator)
+	}
+
+	rightPane := lipgloss.NewStyle().
+		Width(rightWidth).
+		Render(lipgloss.JoinVertical(lipgloss.Left, rightSections...))
+
+	// Combine panes horizontally
+	mainContent := lipgloss.JoinHorizontal(
+		lipgloss.Top,
+		leftPane,
+		"  ", // 2-space gap
+		rightPane,
+	)
+
+	// Footer (full width)
 	footer := m.renderFooter()
-	sections = append(sections, footer)
 
-	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+	return lipgloss.JoinVertical(lipgloss.Left, mainContent, "", footer)
 }
 
 func (m MergeViewModel) renderMergeInfo() string {
@@ -264,6 +369,86 @@ func (m MergeViewModel) renderReasoning() string {
 
 	reasoning := styles.Description.Render("💡 " + m.analysis.Reasoning)
 	return reasoning
+}
+
+// renderStrategiesContent returns just the strategies text for viewport (no title)
+func (m MergeViewModel) renderStrategiesContent() string {
+	styles := GetGlobalThemeManager().GetStyles()
+	var lines []string
+
+	for i, strategy := range m.strategies {
+		cursor := "  "
+		if i == m.selectedIndex {
+			cursor = styles.OptionCursor.Render("▶ ")
+		}
+
+		label := strategy.Label
+		if strategy.Recommended {
+			label += lipgloss.NewStyle().Foreground(styles.ColorSuccess).Render(" (recommended)")
+		}
+
+		if i == m.selectedIndex {
+			label = styles.OptionSelected.Render(label)
+		} else {
+			label = styles.OptionNormal.Render(label)
+		}
+
+		line := cursor + label
+		lines = append(lines, line)
+
+		// Add description with proper wrapping
+		if strategy.Description != "" {
+			// Calculate available width: half window - margins - padding - borders
+			maxWidth := (m.windowWidth / 2) - 12
+			if maxWidth < 30 {
+				maxWidth = 30 // Minimum width
+			}
+			wrapped := wrapTextMerge(strategy.Description, maxWidth)
+			desc := styles.Description.Render("  " + wrapped)
+			lines = append(lines, desc)
+		}
+
+		if i < len(m.strategies)-1 {
+			lines = append(lines, "") // Space between strategies
+		}
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// wrapTextMerge wraps text to the specified width
+func wrapTextMerge(text string, width int) string {
+	if len(text) <= width {
+		return text
+	}
+
+	var lines []string
+	words := strings.Fields(text)
+	currentLine := ""
+
+	for _, word := range words {
+		testLine := currentLine
+		if currentLine != "" {
+			testLine += " " + word
+		} else {
+			testLine = word
+		}
+
+		if len(testLine) <= width {
+			currentLine = testLine
+		} else {
+			if currentLine != "" {
+				lines = append(lines, currentLine)
+			}
+			currentLine = word
+		}
+	}
+
+	if currentLine != "" {
+		lines = append(lines, currentLine)
+	}
+
+	return strings.Join(lines, "\n  ") // Indent continuation lines
 }
 
 func (m MergeViewModel) renderStrategies() string {

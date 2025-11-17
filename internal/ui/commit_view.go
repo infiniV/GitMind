@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/yourusername/gitman/internal/domain"
@@ -22,6 +23,10 @@ type CommitViewModel struct {
 	returnToDashboard bool
 	hasDecision       bool
 	err               error
+	viewport          viewport.Model
+	ready             bool
+	windowWidth       int
+	windowHeight      int
 }
 
 // CommitOption represents a user-selectable option.
@@ -44,7 +49,10 @@ func NewCommitViewModel(
 ) *CommitViewModel {
 	options := buildOptions(decision)
 
-	return &CommitViewModel{
+	// Initialize viewport with default size (will be updated on first WindowSizeMsg)
+	vp := viewport.New(50, 20)
+
+	m := &CommitViewModel{
 		repo:              repo,
 		branchInfo:        branchInfo,
 		decision:          decision,
@@ -55,7 +63,16 @@ func NewCommitViewModel(
 		confirmed:         false,
 		returnToDashboard: false,
 		hasDecision:       false,
+		viewport:          vp,
+		ready:             true, // Set ready immediately
+		windowWidth:       120,  // Default width
+		windowHeight:      30,   // Default height
 	}
+
+	// Set initial viewport content
+	m.viewport.SetContent(m.renderOptionsContent())
+
+	return m
 }
 
 func buildOptions(decision *domain.Decision) []CommitOption {
@@ -124,17 +141,42 @@ func (m CommitViewModel) Init() tea.Cmd {
 
 // Update handles messages.
 func (m CommitViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.windowWidth = msg.Width
+		m.windowHeight = msg.Height
+
+		// Update viewport size on window resize
+		// Match the pane width calculation
+		viewportWidth := (msg.Width / 2) - 8
+		viewportHeight := msg.Height - 15 // Account for header, footer, etc.
+		if viewportHeight < 5 {
+			viewportHeight = 5
+		}
+		if viewportWidth < 30 {
+			viewportWidth = 30
+		}
+		m.viewport.Width = viewportWidth
+		m.viewport.Height = viewportHeight
+
+		return m, nil
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "up", "k":
 			if m.selectedIndex > 0 {
 				m.selectedIndex--
+				// Update viewport content to reflect selection
+				m.viewport.SetContent(m.renderOptionsContent())
 			}
 
 		case "down", "j":
 			if m.selectedIndex < len(m.options)-1 {
 				m.selectedIndex++
+				// Update viewport content to reflect selection
+				m.viewport.SetContent(m.renderOptionsContent())
 			}
 
 		case "enter":
@@ -145,10 +187,13 @@ func (m CommitViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	return m, nil
+	// Update viewport (handles scrolling)
+	m.viewport, cmd = m.viewport.Update(msg)
+
+	return m, cmd
 }
 
-// View renders the UI.
+// View renders the UI with two-pane layout.
 func (m CommitViewModel) View() string {
 	styles := GetGlobalThemeManager().GetStyles()
 
@@ -159,43 +204,92 @@ func (m CommitViewModel) View() string {
 			Render(fmt.Sprintf("ERROR: %v\n", m.err))
 	}
 
-	var sections []string
+	if !m.ready {
+		return lipgloss.NewStyle().
+			Foreground(styles.ColorMuted).
+			Render("Initializing commit view...")
+	}
 
-	// Header
-	header := styles.Header.Render("GitMind - Commit Assistant")
-	sections = append(sections, header)
+	// Calculate pane widths - more conservative to prevent cutoff
+	leftWidth := (m.windowWidth / 2) - 4
+	rightWidth := (m.windowWidth / 2) - 4
 
-	// Repository info
+	// LEFT PANE: ASCII art, repo info, commit message
+	var leftSections []string
+
+	// ASCII art header for COMMIT
+	logoStyle := lipgloss.NewStyle().
+		Foreground(styles.ColorPrimary).
+		Bold(true)
+
+	logo := logoStyle.Render(
+		`  ██████╗ ██████╗ ███╗   ███╗███╗   ███╗██╗████████╗
+ ██╔════╝██╔═══██╗████╗ ████║████╗ ████║██║╚══██╔══╝
+ ██║     ██║   ██║██╔████╔██║██╔████╔██║██║   ██║
+ ██║     ██║   ██║██║╚██╔╝██║██║╚██╔╝██║██║   ██║
+ ╚██████╗╚██████╔╝██║ ╚═╝ ██║██║ ╚═╝ ██║██║   ██║
+  ╚═════╝ ╚═════╝ ╚═╝     ╚═╝╚═╝     ╚═╝╚═╝   ╚═╝`)
+
+	leftSections = append(leftSections, logo)
+	leftSections = append(leftSections, "")
+
 	repoInfo := m.renderRepoInfo()
-	sections = append(sections, repoInfo)
+	leftSections = append(leftSections, repoInfo)
 
-	// Warning if no remote
 	if !m.repo.HasRemote() {
 		warning := styles.Warning.Render("[WARNING]") + " " +
 			lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(
-				"No remote configured. Use 'git remote add origin <url>' to add one.")
-		sections = append(sections, warning)
+				"No remote configured")
+		leftSections = append(leftSections, warning)
 	}
 
-	// Separator
-	sections = append(sections, renderSeparator(80))
+	leftSections = append(leftSections, "")
+	leftSections = append(leftSections, renderSeparator(leftWidth))
+	leftSections = append(leftSections, "")
 
-	// Commit message box
 	commitBox := m.renderCommitMessage()
-	sections = append(sections, commitBox)
+	leftSections = append(leftSections, commitBox)
 
-	// Separator
-	sections = append(sections, renderSeparator(80))
+	leftPane := lipgloss.NewStyle().
+		Width(leftWidth).
+		Render(lipgloss.JoinVertical(lipgloss.Left, leftSections...))
 
-	// Options
-	optionsSection := m.renderOptions()
-	sections = append(sections, optionsSection)
+	// RIGHT PANE: Options with viewport
+	var rightSections []string
 
-	// Footer
+	optionsTitle := styles.SectionTitle.Render("Actions")
+	rightSections = append(rightSections, optionsTitle)
+	rightSections = append(rightSections, "")
+
+	// Viewport with scrollable options
+	viewportContent := m.viewport.View()
+	rightSections = append(rightSections, viewportContent)
+
+	// Scroll indicator
+	if m.viewport.TotalLineCount() > m.viewport.Height {
+		scrollIndicator := lipgloss.NewStyle().
+			Foreground(styles.ColorMuted).
+			Render(fmt.Sprintf("(%d%% scrolled)", int(m.viewport.ScrollPercent()*100)))
+		rightSections = append(rightSections, "")
+		rightSections = append(rightSections, scrollIndicator)
+	}
+
+	rightPane := lipgloss.NewStyle().
+		Width(rightWidth).
+		Render(lipgloss.JoinVertical(lipgloss.Left, rightSections...))
+
+	// Combine panes horizontally
+	mainContent := lipgloss.JoinHorizontal(
+		lipgloss.Top,
+		leftPane,
+		"  ", // 2-space gap
+		rightPane,
+	)
+
+	// Footer (full width)
 	footer := m.renderFooter()
-	sections = append(sections, footer)
 
-	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+	return lipgloss.JoinVertical(lipgloss.Left, mainContent, "", footer)
 }
 
 func (m CommitViewModel) renderRepoInfo() string {
@@ -242,6 +336,21 @@ func (m CommitViewModel) renderCommitMessage() string {
 	return title + "\n" + box
 }
 
+// renderOptionsContent returns just the options text for viewport (no title)
+func (m CommitViewModel) renderOptionsContent() string {
+	var lines []string
+
+	for i, option := range m.options {
+		optionStr := m.renderOption(i, option)
+		lines = append(lines, optionStr)
+		if i < len(m.options)-1 {
+			lines = append(lines, "") // Space between options
+		}
+	}
+
+	return strings.Join(lines, "\n")
+}
+
 func (m CommitViewModel) renderOptions() string {
 	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
@@ -279,9 +388,14 @@ func (m CommitViewModel) renderOption(index int, option CommitOption) string {
 	badge := getConfidenceBadge(option.Confidence)
 	content[0] = content[0] + " " + badge
 
-	// Description (indented)
+	// Description (wrapped to pane width minus padding)
 	if option.Description != "" {
-		wrapped := wrapText(option.Description, 70)
+		// Calculate available width: half window - margins - padding - borders
+		maxWidth := (m.windowWidth / 2) - 12
+		if maxWidth < 30 {
+			maxWidth = 30 // Minimum width
+		}
+		wrapped := wrapText(option.Description, maxWidth)
 		desc := styles.OptionDesc.Render(wrapped)
 		content = append(content, desc)
 	}
@@ -350,10 +464,31 @@ func wrapText(text string, width int) string {
 		return text
 	}
 
-	// Try to wrap at word boundary
-	if lastSpace := strings.LastIndex(text[:width], " "); lastSpace > width-20 {
-		return text[:lastSpace] + "..."
+	var lines []string
+	words := strings.Fields(text)
+	currentLine := ""
+
+	for _, word := range words {
+		testLine := currentLine
+		if currentLine != "" {
+			testLine += " " + word
+		} else {
+			testLine = word
+		}
+
+		if len(testLine) <= width {
+			currentLine = testLine
+		} else {
+			if currentLine != "" {
+				lines = append(lines, currentLine)
+			}
+			currentLine = word
+		}
 	}
 
-	return text[:width-3] + "..."
+	if currentLine != "" {
+		lines = append(lines, currentLine)
+	}
+
+	return strings.Join(lines, "\n")
 }
