@@ -86,7 +86,9 @@ func (m OnboardingBranchesScreen) Update(msg tea.Msg) (OnboardingBranchesScreen,
 				return m, nil
 			case 1:
 				// Toggle focused checkbox in group
-				m.protectedBranches.Toggle()
+				if m.protectedBranches.FocusedIdx >= 0 && m.protectedBranches.FocusedIdx < len(m.protectedBranches.Items) {
+					m.protectedBranches.Items[m.protectedBranches.FocusedIdx].Checked = !m.protectedBranches.Items[m.protectedBranches.FocusedIdx].Checked
+				}
 				return m, nil
 			case 2:
 				// Add custom protected branch
@@ -128,28 +130,55 @@ func (m OnboardingBranchesScreen) Update(msg tea.Msg) (OnboardingBranchesScreen,
 			}
 			return m, nil
 
-		case "space":
+		case " ": // Space character
 			switch m.focusedField {
 			case 1:
-				m.protectedBranches.Toggle()
+				if m.protectedBranches.FocusedIdx >= 0 && m.protectedBranches.FocusedIdx < len(m.protectedBranches.Items) {
+					m.protectedBranches.Items[m.protectedBranches.FocusedIdx].Checked = !m.protectedBranches.Items[m.protectedBranches.FocusedIdx].Checked
+				}
 			case 3:
 				// Toggle auto-push
-				m.autoPush.Toggle()
+				m.autoPush.Checked = !m.autoPush.Checked
 			}
 			return m, nil
 
 		case "p", "P":
 			// Quick toggle auto-pull
-			m.autoPull.Toggle()
+			m.autoPull.Checked = !m.autoPull.Checked
+			return m, nil
+
+		case "backspace", "delete":
+			// Handle text input deletion
+			switch m.focusedField {
+			case 0:
+				if len(m.mainBranch.Value) > 0 {
+					m.mainBranch.Value = m.mainBranch.Value[:len(m.mainBranch.Value)-1]
+				}
+			case 2:
+				if len(m.customProtected.Value) > 0 {
+					m.customProtected.Value = m.customProtected.Value[:len(m.customProtected.Value)-1]
+				}
+			}
 			return m, nil
 
 		default:
 			// Handle text input
 			switch m.focusedField {
-			case 0:
-				m.mainBranch.Update(msg)
-			case 2:
-				m.customProtected.Update(msg)
+			case 0, 2:
+				key := msg.String()
+				if key == "space" {
+					if m.focusedField == 0 {
+						m.mainBranch.Value += " "
+					} else {
+						m.customProtected.Value += " "
+					}
+				} else if len(key) == 1 {
+					if m.focusedField == 0 {
+						m.mainBranch.Value += key
+					} else {
+						m.customProtected.Value += key
+					}
+				}
 			}
 			return m, nil
 		}

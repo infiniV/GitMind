@@ -121,7 +121,7 @@ func (m OnboardingCommitsScreen) Update(msg tea.Msg) (OnboardingCommitsScreen, t
 		case "left":
 			switch m.focusedField {
 			case 0:
-				m.convention.Previous()
+				m.convention.Selected = (m.convention.Selected - 1 + len(m.convention.Options)) % len(m.convention.Options)
 				m.updatePreview()
 				return m, nil
 			case 1:
@@ -133,7 +133,7 @@ func (m OnboardingCommitsScreen) Update(msg tea.Msg) (OnboardingCommitsScreen, t
 		case "right":
 			switch m.focusedField {
 			case 0:
-				m.convention.Next()
+				m.convention.Selected = (m.convention.Selected + 1) % len(m.convention.Options)
 				m.updatePreview()
 				return m, nil
 			case 1:
@@ -142,19 +142,31 @@ func (m OnboardingCommitsScreen) Update(msg tea.Msg) (OnboardingCommitsScreen, t
 			}
 			return m, nil
 
-		case "space":
+		case " ": // Space character
 			switch m.focusedField {
 			case 0:
-				m.convention.Next()
+				m.convention.Selected = (m.convention.Selected + 1) % len(m.convention.Options)
 				m.updatePreview()
 			case 1:
-				m.commitTypes.Toggle()
+				if m.commitTypes.FocusedIdx >= 0 && m.commitTypes.FocusedIdx < len(m.commitTypes.Items) {
+					m.commitTypes.Items[m.commitTypes.FocusedIdx].Checked = !m.commitTypes.Items[m.commitTypes.FocusedIdx].Checked
+				}
 				m.updatePreview()
 			case 2:
-				m.requireScope.Toggle()
+				m.requireScope.Checked = !m.requireScope.Checked
 				m.updatePreview()
 			case 3:
-				m.requireBreaking.Toggle()
+				m.requireBreaking.Checked = !m.requireBreaking.Checked
+				m.updatePreview()
+			}
+			return m, nil
+
+		case "backspace", "delete":
+			// Handle text input deletion for custom template
+			if m.focusedField == 4 && m.convention.Selected == 1 {
+				if len(m.customTemplate.Value) > 0 {
+					m.customTemplate.Value = m.customTemplate.Value[:len(m.customTemplate.Value)-1]
+				}
 				m.updatePreview()
 			}
 			return m, nil
@@ -162,8 +174,14 @@ func (m OnboardingCommitsScreen) Update(msg tea.Msg) (OnboardingCommitsScreen, t
 		default:
 			// Handle text input for custom template
 			if m.focusedField == 4 && m.convention.Selected == 1 {
-				m.customTemplate.Update(msg)
-				m.updatePreview()
+				key := msg.String()
+				if key == "space" {
+					m.customTemplate.Value += " "
+					m.updatePreview()
+				} else if len(key) == 1 {
+					m.customTemplate.Value += key
+					m.updatePreview()
+				}
 			}
 			return m, nil
 		}

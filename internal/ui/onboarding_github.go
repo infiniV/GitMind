@@ -144,7 +144,7 @@ func (m OnboardingGitHubScreen) Update(msg tea.Msg) (OnboardingGitHubScreen, tea
 			case "enter":
 				m.shouldContinue = true
 				return m, nil
-			case "left":
+			case "esc":
 				m.shouldGoBack = true
 				return m, nil
 			case "s", "S":
@@ -158,30 +158,20 @@ func (m OnboardingGitHubScreen) Update(msg tea.Msg) (OnboardingGitHubScreen, tea
 		// Full form navigation
 		switch msg.String() {
 		case "enter":
-			// If on a dropdown, toggle it
+			// For button, submit form
+			if m.focusedField == 9 {
+				return m, m.createRepository()
+			}
+			// For dropdowns, toggle them
 			if m.focusedField == 3 { // License dropdown
 				m.license.Toggle()
 				return m, nil
 			} else if m.focusedField == 4 { // Gitignore dropdown
 				m.gitignore.Toggle()
 				return m, nil
-			} else if m.focusedField >= 5 && m.focusedField <= 8 {
-				// Toggle checkboxes
-				switch m.focusedField {
-				case 5:
-					m.addReadme.Toggle()
-				case 6:
-					m.enableIssues.Toggle()
-				case 7:
-					m.enableWiki.Toggle()
-				case 8:
-					m.enableProjects.Toggle()
-				}
-				return m, nil
-			} else if m.focusedField == 9 {
-				// Create button - submit form
-				return m, m.createRepository()
 			}
+			// For all other fields (text, radio, checkbox), move to next
+			m.focusedField = (m.focusedField + 1) % 10
 			return m, nil
 
 		case "tab", "down":
@@ -192,63 +182,88 @@ func (m OnboardingGitHubScreen) Update(msg tea.Msg) (OnboardingGitHubScreen, tea
 			m.focusedField = (m.focusedField - 1 + 10) % 10
 			return m, nil
 
+		case "esc":
+			// Esc always goes back to previous screen
+			m.shouldGoBack = true
+			return m, nil
+
 		case "left":
-			// Navigate dropdowns or go back
-			if m.focusedField == 2 && m.visibility.Focused {
-				m.visibility.Previous()
-				return m, nil
+			// ONLY for navigating within radio/dropdown - NO back navigation
+			if m.focusedField == 2 {
+				m.visibility.Selected = (m.visibility.Selected - 1 + len(m.visibility.Options)) % len(m.visibility.Options)
 			} else if m.focusedField == 3 && m.license.Open {
 				m.license.Previous()
-				return m, nil
 			} else if m.focusedField == 4 && m.gitignore.Open {
 				m.gitignore.Previous()
-				return m, nil
-			} else if m.focusedField == 0 {
-				// Go back to previous screen
-				m.shouldGoBack = true
-				return m, nil
 			}
 			return m, nil
 
 		case "right":
-			// Navigate dropdowns
-			if m.focusedField == 2 && m.visibility.Focused {
-				m.visibility.Next()
-				return m, nil
+			// ONLY for navigating within radio/dropdown
+			if m.focusedField == 2 {
+				m.visibility.Selected = (m.visibility.Selected + 1) % len(m.visibility.Options)
 			} else if m.focusedField == 3 && m.license.Open {
 				m.license.Next()
-				return m, nil
 			} else if m.focusedField == 4 && m.gitignore.Open {
 				m.gitignore.Next()
-				return m, nil
 			}
 			return m, nil
 
-		case "space":
-			// Toggle checkboxes or radio
+		case " ": // Space character
+			// Toggle checkboxes or cycle radio
 			if m.focusedField == 2 {
-				m.visibility.Next()
+				m.visibility.Selected = (m.visibility.Selected + 1) % len(m.visibility.Options)
 			} else if m.focusedField >= 5 && m.focusedField <= 8 {
 				switch m.focusedField {
 				case 5:
-					m.addReadme.Toggle()
+					m.addReadme.Checked = !m.addReadme.Checked
 				case 6:
-					m.enableIssues.Toggle()
+					m.enableIssues.Checked = !m.enableIssues.Checked
 				case 7:
-					m.enableWiki.Toggle()
+					m.enableWiki.Checked = !m.enableWiki.Checked
 				case 8:
-					m.enableProjects.Toggle()
+					m.enableProjects.Checked = !m.enableProjects.Checked
+				}
+			}
+			return m, nil
+
+		case "s", "S":
+			// Skip this screen
+			m.shouldSkip = true
+			m.shouldContinue = true
+			return m, nil
+
+		case "backspace", "delete":
+			// Handle text input deletion
+			if m.focusedField == 0 {
+				if len(m.repoName.Value) > 0 {
+					m.repoName.Value = m.repoName.Value[:len(m.repoName.Value)-1]
+				}
+			} else if m.focusedField == 1 {
+				if len(m.description.Value) > 0 {
+					m.description.Value = m.description.Value[:len(m.description.Value)-1]
 				}
 			}
 			return m, nil
 
 		default:
-			// Handle text input
-			switch m.focusedField {
-			case 0:
-				m.repoName.Update(msg)
-			case 1:
-				m.description.Update(msg)
+			// Handle all other text input (alphanumeric, symbols, etc.)
+			if m.focusedField == 0 || m.focusedField == 1 {
+				// Check if it's a printable character or space
+				key := msg.String()
+				if key == "space" {
+					if m.focusedField == 0 {
+						m.repoName.Value += " "
+					} else {
+						m.description.Value += " "
+					}
+				} else if len(key) == 1 {
+					if m.focusedField == 0 {
+						m.repoName.Value += key
+					} else {
+						m.description.Value += key
+					}
+				}
 			}
 			return m, nil
 		}
@@ -344,7 +359,8 @@ func (m OnboardingGitHubScreen) View() string {
 		sections = append(sections, "")
 		sections = append(sections, footerStyle.Render(
 			shortcutKeyStyle.Render("Enter")+" "+shortcutDescStyle.Render("Skip & Continue")+"  "+
-				shortcutKeyStyle.Render("←")+" "+shortcutDescStyle.Render("Back")))
+				shortcutKeyStyle.Render("Esc")+" "+shortcutDescStyle.Render("Back")+"  "+
+				shortcutKeyStyle.Render("S")+" "+shortcutDescStyle.Render("Skip")))
 		return strings.Join(sections, "\n")
 	}
 
@@ -363,7 +379,8 @@ func (m OnboardingGitHubScreen) View() string {
 		sections = append(sections, "")
 		sections = append(sections, footerStyle.Render(
 			shortcutKeyStyle.Render("Enter")+" "+shortcutDescStyle.Render("Skip & Continue")+"  "+
-				shortcutKeyStyle.Render("←")+" "+shortcutDescStyle.Render("Back")))
+				shortcutKeyStyle.Render("Esc")+" "+shortcutDescStyle.Render("Back")+"  "+
+				shortcutKeyStyle.Render("S")+" "+shortcutDescStyle.Render("Skip")))
 		return strings.Join(sections, "\n")
 	}
 
@@ -380,7 +397,8 @@ func (m OnboardingGitHubScreen) View() string {
 		sections = append(sections, "")
 		sections = append(sections, footerStyle.Render(
 			shortcutKeyStyle.Render("Enter")+" "+shortcutDescStyle.Render("Continue")+"  "+
-				shortcutKeyStyle.Render("←")+" "+shortcutDescStyle.Render("Back")))
+				shortcutKeyStyle.Render("Esc")+" "+shortcutDescStyle.Render("Back")+"  "+
+				shortcutKeyStyle.Render("S")+" "+shortcutDescStyle.Render("Skip")))
 		return strings.Join(sections, "\n")
 	}
 
@@ -435,13 +453,13 @@ func (m OnboardingGitHubScreen) View() string {
 	// Checkboxes
 	sections = append(sections, formLabelStyle.Render("Options:"))
 	m.addReadme.Focused = (m.focusedField == 5)
-	sections = append(sections, "  "+m.addReadme.View())
+	sections = append(sections, m.addReadme.View())
 	m.enableIssues.Focused = (m.focusedField == 6)
-	sections = append(sections, "  "+m.enableIssues.View())
+	sections = append(sections, m.enableIssues.View())
 	m.enableWiki.Focused = (m.focusedField == 7)
-	sections = append(sections, "  "+m.enableWiki.View())
+	sections = append(sections, m.enableWiki.View())
 	m.enableProjects.Focused = (m.focusedField == 8)
-	sections = append(sections, "  "+m.enableProjects.View())
+	sections = append(sections, m.enableProjects.View())
 
 	sections = append(sections, "")
 
@@ -459,12 +477,26 @@ func (m OnboardingGitHubScreen) View() string {
 	sections = append(sections, "")
 	sections = append(sections, renderSeparator(70))
 
-	// Footer
-	footer := footerStyle.Render(
-		shortcutKeyStyle.Render("Tab/↑↓")+" "+shortcutDescStyle.Render("Navigate")+"  "+
-			shortcutKeyStyle.Render("Enter/Space")+" "+shortcutDescStyle.Render("Select")+"  "+
-			shortcutKeyStyle.Render("←")+" "+shortcutDescStyle.Render("Back")+"  "+
-			shortcutKeyStyle.Render("S")+" "+shortcutDescStyle.Render("Skip"))
+	// Footer - simple, consistent instructions
+	footerText := shortcutKeyStyle.Render("Tab/↑↓") + " " + shortcutDescStyle.Render("Navigate") + "  " +
+		shortcutKeyStyle.Render("Enter") + " " + shortcutDescStyle.Render("Next/Select") + "  " +
+		shortcutKeyStyle.Render("Esc") + " " + shortcutDescStyle.Render("Back") + "  " +
+		shortcutKeyStyle.Render("S") + " " + shortcutDescStyle.Render("Skip")
+
+	// Add field-specific hints
+	if m.focusedField == 0 || m.focusedField == 1 {
+		// Text input
+		footerText = shortcutKeyStyle.Render("Type") + " " + shortcutDescStyle.Render("to edit") + "  " + footerText
+	} else if m.focusedField >= 5 && m.focusedField <= 8 {
+		// Checkbox
+		footerText = shortcutKeyStyle.Render("Space") + " " + shortcutDescStyle.Render("Toggle") + "  " + footerText
+	} else if m.focusedField == 9 {
+		// Button
+		footerText = shortcutKeyStyle.Render("Enter") + " " + shortcutDescStyle.Render("Create Repository") + "  " +
+			shortcutKeyStyle.Render("Esc") + " " + shortcutDescStyle.Render("Back")
+	}
+
+	footer := footerStyle.Render(footerText)
 	sections = append(sections, footer)
 
 	return strings.Join(sections, "\n")

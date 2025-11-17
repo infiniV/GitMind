@@ -102,9 +102,8 @@ func (m OnboardingAIScreen) Update(msg tea.Msg) (OnboardingAIScreen, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "enter":
-			switch m.focusedField {
-			case 7:
-				// Validate and save
+			// For "Continue" button (field 7), validate and save
+			if m.focusedField == 7 {
 				if m.apiKey.Value == "" {
 					m.error = "API key is required"
 					return m, nil
@@ -112,13 +111,20 @@ func (m OnboardingAIScreen) Update(msg tea.Msg) (OnboardingAIScreen, tea.Cmd) {
 				m.saveToConfig()
 				m.shouldContinue = true
 				return m, nil
-			case 0:
-				m.provider.Toggle()
-			case 3:
-				m.defaultModel.Toggle()
-			case 4:
-				m.fallbackModel.Toggle()
 			}
+			// For dropdowns, toggle them
+			if m.focusedField == 0 {
+				m.provider.Toggle()
+				return m, nil
+			} else if m.focusedField == 3 {
+				m.defaultModel.Toggle()
+				return m, nil
+			} else if m.focusedField == 4 {
+				m.fallbackModel.Toggle()
+				return m, nil
+			}
+			// For all other fields, move to next
+			m.focusedField = (m.focusedField + 1) % 8
 			return m, nil
 
 		case "tab", "down":
@@ -129,12 +135,15 @@ func (m OnboardingAIScreen) Update(msg tea.Msg) (OnboardingAIScreen, tea.Cmd) {
 			m.focusedField = (m.focusedField - 1 + 8) % 8
 			return m, nil
 
+		case "esc":
+			// Esc always goes back
+			m.shouldGoBack = true
+			return m, nil
+
 		case "left":
-			if m.focusedField == 0 {
-				m.shouldGoBack = true
-				return m, nil
-			} else if m.focusedField == 2 {
-				m.apiTier.Previous()
+			// ONLY for navigating within radio/dropdown - NO back navigation
+			if m.focusedField == 2 {
+				m.apiTier.Selected = (m.apiTier.Selected - 1 + len(m.apiTier.Options)) % len(m.apiTier.Options)
 			} else if m.focusedField == 0 && m.provider.Open {
 				m.provider.Previous()
 			} else if m.focusedField == 3 && m.defaultModel.Open {
@@ -145,8 +154,9 @@ func (m OnboardingAIScreen) Update(msg tea.Msg) (OnboardingAIScreen, tea.Cmd) {
 			return m, nil
 
 		case "right":
+			// ONLY for navigating within radio/dropdown
 			if m.focusedField == 2 {
-				m.apiTier.Next()
+				m.apiTier.Selected = (m.apiTier.Selected + 1) % len(m.apiTier.Options)
 			} else if m.focusedField == 0 && m.provider.Open {
 				m.provider.Next()
 			} else if m.focusedField == 3 && m.defaultModel.Open {
@@ -156,23 +166,48 @@ func (m OnboardingAIScreen) Update(msg tea.Msg) (OnboardingAIScreen, tea.Cmd) {
 			}
 			return m, nil
 
-		case "space":
+		case " ": // Space character
 			switch m.focusedField {
 			case 2:
-				m.apiTier.Next()
+				m.apiTier.Selected = (m.apiTier.Selected + 1) % len(m.apiTier.Options)
 			case 6:
-				m.includeContext.Toggle()
+				m.includeContext.Checked = !m.includeContext.Checked
+			}
+			return m, nil
+
+		case "backspace", "delete":
+			// Handle text input deletion
+			if m.focusedField == 1 {
+				if len(m.apiKey.Value) > 0 {
+					m.apiKey.Value = m.apiKey.Value[:len(m.apiKey.Value)-1]
+				}
+				m.error = "" // Clear error on input
+			} else if m.focusedField == 5 {
+				if len(m.maxDiffSize.Value) > 0 {
+					m.maxDiffSize.Value = m.maxDiffSize.Value[:len(m.maxDiffSize.Value)-1]
+				}
 			}
 			return m, nil
 
 		default:
-			// Handle text input
-			switch m.focusedField {
-			case 1:
-				m.apiKey.Update(msg)
-				m.error = "" // Clear error on input
-			case 5:
-				m.maxDiffSize.Update(msg)
+			// Handle all other text input (alphanumeric, symbols, etc.)
+			if m.focusedField == 1 || m.focusedField == 5 {
+				key := msg.String()
+				if key == "space" {
+					if m.focusedField == 1 {
+						m.apiKey.Value += " "
+						m.error = "" // Clear error on input
+					} else {
+						m.maxDiffSize.Value += " "
+					}
+				} else if len(key) == 1 {
+					if m.focusedField == 1 {
+						m.apiKey.Value += key
+						m.error = "" // Clear error on input
+					} else {
+						m.maxDiffSize.Value += key
+					}
+				}
 			}
 			return m, nil
 		}
