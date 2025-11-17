@@ -96,6 +96,10 @@ type AppModel struct {
 	showingConfirmation  bool
 	confirmationMessage  string
 	confirmationCallback func() tea.Cmd
+
+	// Error modal state
+	showingError bool
+	errorMessage string
 }
 
 // NewAppModel creates a new root application model
@@ -176,6 +180,14 @@ func (m AppModel) Init() tea.Cmd {
 func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// Handle error modal
+		if m.showingError {
+			// Any key dismisses error modal
+			m.showingError = false
+			m.errorMessage = ""
+			return m, nil
+		}
+
 		// Handle confirmation dialog
 		if m.showingConfirmation {
 			switch msg.String() {
@@ -285,8 +297,9 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.commitAnalysisError = msg.err
 
 		if msg.err != nil {
-			// Show error and return to dashboard
-			PrintError(fmt.Sprintf("Analysis failed: %v", msg.err))
+			// Show error modal instead of returning immediately
+			m.showingError = true
+			m.errorMessage = fmt.Sprintf("Commit Analysis Failed\n\n%v\n\nPress any key to continue", msg.err)
 			m.state = StateDashboard
 			return m, m.dashboard.Init()
 		}
@@ -307,7 +320,9 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.mergeAnalysisError = msg.err
 
 		if msg.err != nil {
-			PrintError(fmt.Sprintf("Analysis failed: %v", msg.err))
+			// Show error modal instead of returning immediately
+			m.showingError = true
+			m.errorMessage = fmt.Sprintf("Merge Analysis Failed\n\n%v\n\nPress any key to continue", msg.err)
 			m.state = StateDashboard
 			return m, m.dashboard.Init()
 		}
@@ -622,24 +637,33 @@ func (m AppModel) View() string {
 
 	// For non-dashboard states, render overlays directly without tabs
 	if m.state != StateDashboard {
+		var overlayView string
+
 		// Render overlay based on state
 		switch m.state {
 		case StateCommitAnalyzing, StateCommitExecuting:
-			return m.renderLoadingOverlay()
+			overlayView = m.renderLoadingOverlay()
 
 		case StateCommitView:
 			if m.commitView != nil {
-				return m.commitView.View()
+				overlayView = m.commitView.View()
 			}
 
 		case StateMergeAnalyzing, StateMergeExecuting:
-			return m.renderLoadingOverlay()
+			overlayView = m.renderLoadingOverlay()
 
 		case StateMergeView:
 			if m.mergeView != nil {
-				return m.mergeView.View()
+				overlayView = m.mergeView.View()
 			}
 		}
+
+		// Show confirmation dialog if active (must render on top of overlay)
+		if m.showingConfirmation {
+			return overlayView + "\n\n" + m.renderConfirmationDialog()
+		}
+
+		return overlayView
 	}
 
 	// Render tab bar
@@ -659,6 +683,11 @@ func (m AppModel) View() string {
 
 	// Combine tab bar and content
 	view := tabBar + "\n" + content
+
+	// Show error modal if active (highest priority)
+	if m.showingError {
+		return view + "\n\n" + m.renderErrorModal()
+	}
 
 	// Show confirmation dialog if active
 	if m.showingConfirmation {
@@ -691,6 +720,24 @@ func (m AppModel) renderConfirmationDialog() string {
 	content := message + "\n\n" + prompt
 
 	return commitBoxStyle.Render(content)
+}
+
+// renderErrorModal renders an error modal
+func (m AppModel) renderErrorModal() string {
+	title := lipgloss.NewStyle().
+		Foreground(colorError).
+		Bold(true).
+		Render("ERROR")
+
+	message := lipgloss.NewStyle().
+		Foreground(colorError).
+		Render(m.errorMessage)
+
+	content := title + "\n\n" + message
+
+	return commitBoxStyle.
+		BorderForeground(colorError).
+		Render(content)
 }
 
 // renderTabBar renders the tab bar at the top
