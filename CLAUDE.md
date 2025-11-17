@@ -527,33 +527,71 @@ if msg.err != nil {
 
 **State fields in AppModel:**
 ```go
-showingConfirmation  bool
-confirmationMessage  string
-confirmationCallback func() tea.Cmd
+showingConfirmation    bool
+confirmationMessage    string
+confirmationCallback   func() tea.Cmd
+confirmationSelectedBtn int // 0 = No (default), 1 = Yes
 ```
 
 **ESC key handling flow:**
 1. User presses ESC in commit/merge view
-2. `AppModel.Update()` catches ESC key (app_model.go:236)
-3. Sets `showingConfirmation = true` and stores callback
-4. `AppModel.View()` renders confirmation dialog on top of current view
-5. User presses Y to confirm or N/ESC to cancel
-6. Callback executes if confirmed (returns to dashboard)
+2. `AppModel.Update()` catches ESC key and sets `showingConfirmation = true`
+3. `confirmationSelectedBtn` defaults to 0 (No) for safety
+4. `AppModel.View()` renders full-screen confirmation modal centered on screen
+5. User navigates with ←/→ or Tab, confirms with Enter
+6. ESC cancels (same as selecting No)
+7. Callback executes only if Yes is selected
+
+**Button navigation:**
+- `←` or `h` - Select "No" button
+- `→` or `l` - Select "Yes" button
+- `Tab` - Toggle between buttons
+- `Enter` - Confirm selected button
+- `ESC` - Cancel (same as No)
+
+**Visual design:**
+- Full-screen centered modal using `lipgloss.Place()`
+- Active button: Orange background (`#C15F3C`), black text, bold
+- Inactive button: Gray border, normal text
+- Dark background (`#1a1a1a`) with orange border
+- Warning icon (⚠) in title
+- Help text at bottom
+
+**Example rendering:**
+```
+╭────────────────────────────────────────────────────────╮
+│                                                        │
+│  ⚠ Confirmation                                        │
+│                                                        │
+│  Return to dashboard without merging?                 │
+│                                                        │
+│                                                        │
+│  ╭─────────╮  ╭─────────╮                            │
+│  │   No    │  │   Yes   │  ← Buttons (navigate with ←/→)
+│  ╰─────────╯  ╰─────────╯                            │
+│                                                        │
+│  ←/→ or Tab to switch  •  Enter to confirm  •  Esc    │
+│                                                        │
+╰────────────────────────────────────────────────────────╯
+```
 
 **Critical rendering pattern:**
 ```go
-// app_model.go:646-650
-if m.showingConfirmation {
-    return overlayView + "\n\n" + m.renderConfirmationDialog()
-}
+// app_model.go - renders as centered full-screen modal
+return "\n\n" + lipgloss.Place(
+    80, 20,
+    lipgloss.Center, lipgloss.Center,
+    modalStyle.Render(content),
+)
 ```
 
-This must happen **after** overlay rendering but **before** the final return, ensuring confirmation dialogs appear in all states (not just dashboard).
+The modal is rendered with `lipgloss.Place()` to center it on screen, creating a blocking overlay effect that replaces the current view visually.
 
 **Single-layer key handling:**
 - AppModel exclusively handles ESC key and shows confirmation dialog
 - Child views (CommitViewModel, MergeViewModel) do NOT handle quit keys to avoid conflicts
 - This ensures consistent confirmation behavior across all views
+- Button selection is tracked in AppModel state and resets after each use
 
 ### Common Bug Pattern
 
