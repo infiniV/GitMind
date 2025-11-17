@@ -4,7 +4,6 @@ bin/
 *.dll
 *.so
 *.dylib
-CLAUDE.md
 # Test binary, built with `go test -c`
 *.test
 

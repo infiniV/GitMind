@@ -59,7 +59,9 @@ GitMind follows **Clean Architecture** with strict dependency rules flowing inwa
 │  - dashboard_view.go: Main dashboard grid   │
 │  - commit_view.go: Commit decision UI       │
 │  - merge_view.go: Merge strategy selection  │
-│  - styles.go: Lipgloss theme                │
+│  - theme_manager.go: Dynamic theme system   │
+│  - themes.go: 8 theme presets               │
+│  - styles.go: Global theme state            │
 └──────────────────┬──────────────────────────┘
                    │
 ┌──────────────────▼──────────────────────────┐
@@ -79,8 +81,8 @@ GitMind follows **Clean Architecture** with strict dependency rules flowing inwa
 │  - Decision     │     │  - cerebras.go   │
 │  - CommitMsg    │     │  /git            │
 │  - APIKey       │     │  - operations.go │
-│                 │     │  - exec.go       │
-│                 │     │  /config         │
+│  - Theme        │     │  - exec.go       │
+│  - Config       │     │  /config         │
 │                 │     │  - config.go     │
 └─────────────────┘     └──────────────────┘
     Pure business         External integrations
@@ -152,7 +154,7 @@ GitMind has two main tabs:
 
 ### Settings Tab
 
-The Settings tab provides configuration for Git, GitHub, Commits, Naming, and AI settings.
+The Settings tab provides configuration for Git, GitHub, Commits, Naming, AI, and UI settings (including theme selection).
 
 **Settings subtab navigation:**
 - Press `G` for Git settings
@@ -160,9 +162,10 @@ The Settings tab provides configuration for Git, GitHub, Commits, Naming, and AI
 - Press `C` for Commits settings
 - Press `N` for Naming settings
 - Press `A` for AI settings
+- Press `U` for UI settings (theme selection)
 - Press `S` to save changes
 
-**Important:** Settings subtabs use letter keys (G/H/C/N/A) instead of numbers to avoid conflict with main tab switching (1/2). This allows intuitive navigation without modifier keys.
+**Important:** Settings subtabs use letter keys (G/H/C/N/A/U) instead of numbers to avoid conflict with main tab switching (1/2). This allows intuitive navigation without modifier keys.
 
 **Within settings forms:**
 - `Tab` / `↓` - Navigate to next field
@@ -207,7 +210,7 @@ interior := titleBlock + spacer + contentBlock
 4. **Minimal text** - Concise labels, no redundant "Press Enter" prompts
 5. **Bottom-aligned content** - Content anchored to bottom of card for clean hierarchy
 6. **Instant transitions** - No animations, immediate state changes
-7. **Claude Code color scheme** - Primary orange `#C15F3C`, muted gray `#787878`
+7. **Dynamic theming** - 8 themes available with hot-swap support (default: Claude Warm with primary orange `#C15F3C`)
 
 ### Loading States
 
@@ -228,6 +231,149 @@ func (m AppModel) renderLoadingOverlay() string {
 - "Executing merge..." (git merge)
 
 Dots animate every 500ms for visual feedback.
+
+## Theme System
+
+GitMind features a dynamic theme system with hot-swap functionality, allowing users to change themes instantly without restarting the application.
+
+### Available Themes
+
+GitMind includes **8 professionally designed themes**:
+
+1. **Claude Warm** (default) - Professional warm theme with orange-rust accents
+2. **Ocean Blue** - Cool blue theme for focus and reduced eye strain
+3. **Forest Green** - Natural green theme for balanced, calming coding
+4. **Monochrome** - Minimalist grayscale theme for distraction-free coding
+5. **Magma** - Scientific colormap with vibrant purple-orange gradient
+6. **Viridis** - Scientific colormap with perceptually uniform blue-green gradient
+7. **Plasma** - Scientific colormap with vibrant pink-purple-yellow gradient
+8. **Twilight** - Purple-blue theme optimized for evening coding sessions
+
+Each theme includes complete color palettes for:
+- Primary/secondary colors
+- Success/warning/error states
+- Confidence badges (high/medium/low)
+- Form inputs and backgrounds
+- Borders, text, and muted elements
+
+### Theme Architecture
+
+**Key components:**
+
+1. **Theme Domain Model** (`internal/domain/theme.go`):
+   - `Theme` struct with name, description, colors, and backgrounds
+   - `ThemeColors` struct with all semantic color values
+   - `ThemeBackgrounds` struct for modal/badge/form backgrounds
+   - Hex color validation
+
+2. **Theme Presets** (`internal/ui/themes.go`):
+   - 8 predefined theme constants (`ThemeClaudeWarm`, `ThemeOceanBlue`, etc.)
+   - Helper functions: `AllThemes()`, `GetThemeByName()`, `GetThemeNames()`
+
+3. **Theme Manager** (`internal/ui/theme_manager.go`):
+   - `ThemeManager` struct managing current theme and generated styles
+   - `ThemeStyles` struct with 40+ lipgloss style definitions
+   - Hot-swap via `SetTheme()` which regenerates all styles dynamically
+   - `GetConfidenceBadge()` and `RenderSeparator()` helper methods
+
+4. **Global Theme State** (`internal/ui/styles.go`):
+   - `defaultThemeManager` singleton initialized with Claude Warm theme
+   - `SetGlobalTheme(theme string)` for global theme changes
+   - `GetGlobalThemeManager()` for accessing current theme/styles
+
+### How Hot-Swap Works
+
+1. User selects theme in Settings UI tab (press `2` then `U`)
+2. Arrow keys navigate theme dropdown, triggering immediate preview
+3. `SetGlobalTheme(selectedTheme)` updates the global theme manager
+4. `ThemeManager.SetTheme()` regenerates all 40+ lipgloss styles from new theme colors
+5. `cfgManager.Save()` persists theme choice to `~/.gitman.json`
+6. All UI components automatically use new styles via `GetGlobalThemeManager().GetStyles()`
+
+**No restart required** - theme changes apply instantly across all views.
+
+### Theme Usage Pattern
+
+All UI components follow this pattern:
+
+```go
+func (m SomeView) View() string {
+    // Get current theme styles
+    styles := GetGlobalThemeManager().GetStyles()
+
+    // Use theme colors and styles
+    header := styles.Header.Render("Title")
+    status := styles.StatusOk.Render("Success")
+    badge := GetGlobalThemeManager().GetConfidenceBadge(0.85)
+
+    return lipgloss.JoinVertical(lipgloss.Left, header, status, badge)
+}
+```
+
+**Never cache styles** - always call `GetGlobalThemeManager().GetStyles()` at render time to ensure hot-swap works.
+
+### Settings UI Tab
+
+Access via Settings tab (key `2`) → UI subtab (key `U`):
+
+- **Theme dropdown**: Navigate with arrow keys, changes apply instantly
+- **Live preview**: Shows current theme colors (Success/Warning/Error badges, primary color swatch)
+- **Auto-save**: Theme changes persist automatically to config file
+- **Help text**: "Theme changes are applied and saved automatically."
+
+No manual save button required - themes save on every arrow key press.
+
+### Adding a New Theme
+
+1. **Define theme constant** in `internal/ui/themes.go`:
+   ```go
+   var ThemeMyNew = domain.Theme{
+       Name:        "my-new",
+       Description: "My custom theme description",
+       Colors: domain.ThemeColors{
+           Primary:          "#FF5733",
+           Secondary:        "#C70039",
+           Success:          "#28A745",
+           // ... all 12 color fields
+       },
+       Backgrounds: domain.ThemeBackgrounds{
+           BadgeHigh:    "#1F3A2C",
+           BadgeMedium:  "#3A2F1F",
+           // ... all 7 background fields
+       },
+   }
+   ```
+
+2. **Register in AllThemes()** function:
+   ```go
+   func AllThemes() []domain.Theme {
+       return []domain.Theme{
+           ThemeClaudeWarm,
+           // ... existing themes
+           ThemeMyNew,  // Add here
+       }
+   }
+   ```
+
+3. **Rebuild and test**:
+   ```bash
+   go build -o bin/gm.exe ./cmd/gm
+   bin/gm.exe config  # Test theme appears in dropdown
+   ```
+
+### Configuration
+
+Theme preference is stored in `~/.gitman.json`:
+
+```json
+{
+  "ui": {
+    "theme": "ocean-blue"
+  }
+}
+```
+
+Loaded at startup in `cmd/gm/main.go` via `ui.SetGlobalTheme(cfg.UI.Theme)`.
 
 ## Core Domain Concepts
 
@@ -461,7 +607,10 @@ All Git commands go through `git.Operations` interface (`internal/adapter/git/op
   "api_tier": "free",
   "default_model": "llama-3.3-70b",
   "use_conventional_commits": true,
-  "protected_branches": ["main", "master", "develop"]
+  "protected_branches": ["main", "master", "develop"],
+  "ui": {
+    "theme": "claude-warm"
+  }
 }
 ```
 
@@ -753,7 +902,12 @@ Edit `internal/adapter/ai/cerebras.go`:
 | `internal/ui/dashboard_view.go` | 6-card dashboard grid, navigation, card rendering |
 | `internal/ui/commit_view.go` | Commit decision overlay, option selection |
 | `internal/ui/merge_view.go` | Merge strategy selection overlay |
-| `internal/ui/styles.go` | Lipgloss styles, color scheme, badges, separators |
+| `internal/ui/styles.go` | Global theme manager, theme initialization, backward compatibility helpers |
+| `internal/ui/theme_manager.go` | ThemeManager implementation, dynamic style generation, hot-swap logic |
+| `internal/ui/themes.go` | 8 theme presets, theme selection helpers |
+| `internal/ui/settings_view.go` | Settings UI with 6 tabs including theme selection |
+| `internal/domain/theme.go` | Theme domain model, color/background structs, validation |
+| `internal/domain/config.go` | Configuration struct including UI.Theme field |
 | `internal/domain/branch.go` | BranchInfo, BranchType, parent tracking |
 | `internal/domain/decision.go` | ActionType, Decision, Alternative |
 | `internal/usecase/analyze_commit.go` | Commit analysis workflow, merge detection |
