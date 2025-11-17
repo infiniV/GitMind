@@ -79,6 +79,9 @@ type AppModel struct {
 	cfgManager *config.Manager
 	repoPath   string
 
+	// App info
+	version string
+
 	// Loading state
 	loadingMessage string
 	loadingDots    int
@@ -104,8 +107,9 @@ type AppModel struct {
 }
 
 // NewAppModel creates a new root application model
-func NewAppModel(gitOps git.Operations, aiProvider ai.Provider, cfg *domain.Config, cfgManager *config.Manager, repoPath string) AppModel {
+func NewAppModel(gitOps git.Operations, aiProvider ai.Provider, cfg *domain.Config, cfgManager *config.Manager, repoPath, version string) AppModel {
 	dashboard := NewDashboardModel(gitOps, repoPath)
+	dashboard.SetVersion(version)
 	githubOps := GitHubOps{}
 
 	return AppModel{
@@ -118,12 +122,13 @@ func NewAppModel(gitOps git.Operations, aiProvider ai.Provider, cfg *domain.Conf
 		cfg:          cfg,
 		cfgManager:   cfgManager,
 		repoPath:     repoPath,
+		version:      version,
 		actionParams: make(map[string]interface{}),
 	}
 }
 
 // NewAppModelWithOnboarding creates an AppModel that starts in onboarding mode
-func NewAppModelWithOnboarding(gitOps git.Operations, cfg *domain.Config, cfgManager *config.Manager, repoPath string) AppModel {
+func NewAppModelWithOnboarding(gitOps git.Operations, cfg *domain.Config, cfgManager *config.Manager, repoPath, version string) AppModel {
 	githubOps := GitHubOps{}
 	onboarding := NewOnboardingModel(cfg, cfgManager, gitOps, repoPath)
 
@@ -136,6 +141,7 @@ func NewAppModelWithOnboarding(gitOps git.Operations, cfg *domain.Config, cfgMan
 		cfg:            cfg,
 		cfgManager:     cfgManager,
 		repoPath:       repoPath,
+		version:        version,
 		actionParams:   make(map[string]interface{}),
 	}
 }
@@ -560,6 +566,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Initialize dashboard
 			dashboard := NewDashboardModel(m.gitOps, m.repoPath)
+			dashboard.SetVersion(m.version)
 			m.dashboard = &dashboard
 
 			// Transition to dashboard

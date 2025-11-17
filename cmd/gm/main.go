@@ -457,7 +457,7 @@ func runDashboard() error {
 	aiProvider := ai.NewCerebrasProvider(apiKey, providerConfig)
 
 	// Create and launch AppModel (unified TUI)
-	model := ui.NewAppModel(gitOps, aiProvider, cfg, cfgManager, cwd)
+	model := ui.NewAppModel(gitOps, aiProvider, cfg, cfgManager, cwd, version)
 	p := tea.NewProgram(model, tea.WithAltScreen())
 
 	_, err = p.Run()
@@ -589,7 +589,7 @@ func runOnboard() error {
 	gitOps := git.NewExecOperations()
 
 	// Run onboarding wizard
-	return ui.RunOnboarding(gitOps, cfg, cfgManager, cwd)
+	return ui.RunOnboarding(gitOps, cfg, cfgManager, cwd, version)
 }
 
 func min(a, b int) int {

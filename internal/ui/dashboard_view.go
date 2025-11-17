@@ -69,6 +69,9 @@ type DashboardModel struct {
 	// Action to return
 	action       DashboardAction
 	actionParams map[string]interface{}
+
+	// App info
+	version string
 }
 
 // Message types for async updates
@@ -90,7 +93,13 @@ func NewDashboardModel(gitOps git.Operations, repoPath string) DashboardModel {
 		activeSubmenu: NoSubmenu,
 		loading:       true,
 		actionParams:  make(map[string]interface{}),
+		version:       "0.1.0", // Default version
 	}
+}
+
+// SetVersion sets the application version
+func (m *DashboardModel) SetVersion(version string) {
+	m.version = version
 }
 
 // Init initializes the model and starts data fetching
@@ -401,6 +410,86 @@ func (m *DashboardModel) checkLoading() {
 	}
 }
 
+// renderHeader renders the ASCII art header with version and repo info
+func (m DashboardModel) renderHeader() string {
+	styles := GetGlobalThemeManager().GetStyles()
+
+	// Compact ASCII art logo for "GM"
+	logoStyle := lipgloss.NewStyle().
+		Foreground(styles.ColorPrimary).
+		Bold(true)
+
+	logo := logoStyle.Render(
+		`  ██████╗ ███╗   ███╗
+  ██╔════╝ ████╗ ████║
+  ██║  ███╗██╔████╔██║
+  ██║   ██║██║╚██╔╝██║
+  ╚██████╔╝██║ ╚═╝ ██║
+   ╚═════╝ ╚═╝     ╚═╝`)
+
+	// Build info section (right side)
+	var infoLines []string
+
+	// Line 1: GitMind + version
+	versionLine := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(styles.ColorPrimary).
+		Render("GitMind") + " " +
+		lipgloss.NewStyle().
+			Foreground(styles.ColorMuted).
+			Render("v"+m.version)
+	infoLines = append(infoLines, versionLine)
+
+	// Line 2: Repository path
+	repoName := m.repoPath
+	if len(repoName) > 60 {
+		repoName = "..." + repoName[len(repoName)-57:]
+	}
+	repoLine := lipgloss.NewStyle().
+		Foreground(styles.ColorMuted).
+		Render(repoName)
+	infoLines = append(infoLines, repoLine)
+
+	// Line 3: Branch and status
+	if m.repo != nil {
+		branchName := m.repo.CurrentBranch()
+		if len(branchName) > 40 {
+			branchName = branchName[:37] + "..."
+		}
+
+		statusText := ""
+		if m.repo.HasChanges() {
+			statusText = styles.StatusWarning.Render("Modified")
+		} else {
+			statusText = styles.StatusOk.Render("Clean")
+		}
+
+		branchLine := lipgloss.NewStyle().
+			Foreground(styles.ColorPrimary).
+			Render(branchName) + " " +
+			lipgloss.NewStyle().
+				Foreground(styles.ColorMuted).
+				Render("•") + " " +
+			statusText
+
+		infoLines = append(infoLines, branchLine)
+	} else {
+		infoLines = append(infoLines, "")
+	}
+
+	// Combine logo and info sections
+	infoSection := strings.Join(infoLines, "\n")
+
+	header := lipgloss.JoinHorizontal(
+		lipgloss.Top,
+		logo,
+		"   ",
+		lipgloss.NewStyle().PaddingTop(0).Render(infoSection),
+	)
+
+	return header
+}
+
 // View renders the dashboard
 func (m DashboardModel) View() string {
 	styles := GetGlobalThemeManager().GetStyles()
@@ -420,9 +509,10 @@ func (m DashboardModel) View() string {
 
 	var sections []string
 
-	// Header
-	header := styles.Header.Render("GitMind Dashboard")
+	// Header with ASCII art
+	header := m.renderHeader()
 	sections = append(sections, header)
+	sections = append(sections, "") // Blank line after header
 
 	// Card grid (2x3)
 	topRow := m.renderTopRow()
