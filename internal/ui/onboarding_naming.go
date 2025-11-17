@@ -238,18 +238,19 @@ func (m *OnboardingNamingScreen) saveToConfig() {
 func (m OnboardingNamingScreen) View() string {
 	var sections []string
 
+	styles := GetGlobalThemeManager().GetStyles()
 	// Header
-	header := headerStyle.Render("Branch Naming Patterns")
+	header := styles.Header.Render("Branch Naming Patterns")
 	sections = append(sections, header)
 
 	// Progress
 	progress := fmt.Sprintf("Step %d of %d", m.step, m.totalSteps)
-	sections = append(sections, metadataStyle.Render(progress))
+	sections = append(sections, styles.Metadata.Render(progress))
 
 	sections = append(sections, "")
 
 	// Description
-	desc := lipgloss.NewStyle().Foreground(colorMuted).Render(
+	desc := lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(
 		"Configure branch naming conventions for consistency.")
 	sections = append(sections, desc)
 
@@ -285,7 +286,7 @@ func (m OnboardingNamingScreen) View() string {
 		sections = append(sections, HelpText{Text: "Press Enter to add custom prefix to list"}.View())
 	} else {
 		info := lipgloss.NewStyle().
-			Foreground(colorMuted).
+			Foreground(styles.ColorMuted).
 			Padding(1, 2).
 			Render("Branch naming is not enforced. You can name branches freely.")
 		sections = append(sections, info)
@@ -296,12 +297,12 @@ func (m OnboardingNamingScreen) View() string {
 	sections = append(sections, "")
 
 	// Preview
-	sections = append(sections, formLabelStyle.Render("Preview:"))
+	sections = append(sections, styles.FormLabel.Render("Preview:"))
 	previewBox := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorMuted).
+		BorderForeground(styles.ColorMuted).
 		Padding(0, 1).
-		Foreground(colorText).
+		Foreground(styles.ColorText).
 		Width(66).
 		Render(m.previewExample)
 	sections = append(sections, previewBox)
@@ -317,10 +318,10 @@ func (m OnboardingNamingScreen) View() string {
 	sections = append(sections, renderSeparator(70))
 
 	// Footer
-	footer := footerStyle.Render(
-		shortcutKeyStyle.Render("Tab/↑↓")+" "+shortcutDescStyle.Render("Navigate")+"  "+
-			shortcutKeyStyle.Render("Space")+" "+shortcutDescStyle.Render("Toggle")+"  "+
-			shortcutKeyStyle.Render("←")+" "+shortcutDescStyle.Render("Back"))
+	footer := styles.Footer.Render(
+		styles.ShortcutKey.Render("Tab/↑↓")+" "+styles.ShortcutDesc.Render("Navigate")+"  "+
+			styles.ShortcutKey.Render("Space")+" "+styles.ShortcutDesc.Render("Toggle")+"  "+
+			styles.ShortcutKey.Render("←")+" "+styles.ShortcutDesc.Render("Back"))
 	sections = append(sections, footer)
 
 	return strings.Join(sections, "\n")

@@ -727,25 +727,28 @@ func (m AppModel) renderLoadingOverlay() string {
 		dots += "."
 	}
 
-	loadingText := loadingStyle.Render(m.loadingMessage + dots)
+	styles := GetGlobalThemeManager().GetStyles()
+	loadingText := styles.Loading.Render(m.loadingMessage + dots)
 
 	// Create a centered box
-	box := commitBoxStyle.Render(loadingText)
+	box := styles.CommitBox.Render(loadingText)
 
 	return "\n\n" + box
 }
 
 // renderConfirmationDialog renders a full-screen confirmation dialog with buttons
 func (m AppModel) renderConfirmationDialog() string {
+	styles := GetGlobalThemeManager().GetStyles()
+
 	// Title
 	title := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(colorText).
+		Foreground(styles.ColorText).
 		Render("⚠ Confirmation")
 
 	// Message
 	message := lipgloss.NewStyle().
-		Foreground(colorText).
+		Foreground(styles.ColorText).
 		Render(m.confirmationMessage)
 
 	// Button styles
@@ -753,16 +756,16 @@ func (m AppModel) renderConfirmationDialog() string {
 		Padding(0, 3).
 		MarginRight(2).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorMuted)
+		BorderForeground(styles.ColorMuted)
 
 	buttonActiveStyle := lipgloss.NewStyle().
 		Padding(0, 3).
 		MarginRight(2).
 		Bold(true).
-		Background(colorPrimary).
+		Background(styles.ColorPrimary).
 		Foreground(lipgloss.Color("#000000")).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorPrimary)
+		BorderForeground(styles.ColorPrimary)
 
 	// Render buttons
 	noBtn := "No"
@@ -780,7 +783,7 @@ func (m AppModel) renderConfirmationDialog() string {
 
 	// Help text
 	helpText := lipgloss.NewStyle().
-		Foreground(colorMuted).
+		Foreground(styles.ColorMuted).
 		Render("←/→ or Tab to switch  •  Enter to confirm  •  Esc to cancel")
 
 	// Combine all elements
@@ -800,7 +803,7 @@ func (m AppModel) renderConfirmationDialog() string {
 	modalStyle := lipgloss.NewStyle().
 		Padding(2, 4).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorPrimary).
+		BorderForeground(styles.ColorPrimary).
 		Background(lipgloss.Color("#1a1a1a")). // Dark background
 		Width(60)
 
@@ -813,31 +816,34 @@ func (m AppModel) renderConfirmationDialog() string {
 
 // renderErrorModal renders an error modal
 func (m AppModel) renderErrorModal() string {
+	styles := GetGlobalThemeManager().GetStyles()
+
 	title := lipgloss.NewStyle().
-		Foreground(colorError).
+		Foreground(styles.ColorError).
 		Bold(true).
 		Render("ERROR")
 
 	message := lipgloss.NewStyle().
-		Foreground(colorError).
+		Foreground(styles.ColorError).
 		Render(m.errorMessage)
 
 	content := title + "\n\n" + message
 
-	return commitBoxStyle.
-		BorderForeground(colorError).
+	return styles.CommitBox.
+		BorderForeground(styles.ColorError).
 		Render(content)
 }
 
 // renderTabBar renders the tab bar at the top
 func (m AppModel) renderTabBar() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	var tabs []string
 
 	// Dashboard tab
 	if m.currentTab == TabDashboard {
-		tabs = append(tabs, tabActiveStyle.Render("[1] Dashboard"))
+		tabs = append(tabs, styles.TabActive.Render("[1] Dashboard"))
 	} else {
-		tabs = append(tabs, tabInactiveStyle.Render("[1] Dashboard"))
+		tabs = append(tabs, styles.TabInactive.Render("[1] Dashboard"))
 	}
 
 	// Spacer
@@ -845,13 +851,13 @@ func (m AppModel) renderTabBar() string {
 
 	// Settings tab
 	if m.currentTab == TabSettings {
-		tabs = append(tabs, tabActiveStyle.Render("[2] Settings"))
+		tabs = append(tabs, styles.TabActive.Render("[2] Settings"))
 	} else {
-		tabs = append(tabs, tabInactiveStyle.Render("[2] Settings"))
+		tabs = append(tabs, styles.TabInactive.Render("[2] Settings"))
 	}
 
 	tabLine := lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
-	return tabBarStyle.Render(tabLine)
+	return styles.TabBar.Render(tabLine)
 }
 
 // startCommitAnalysis initiates the commit analysis workflow

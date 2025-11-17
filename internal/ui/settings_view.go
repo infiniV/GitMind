@@ -20,6 +20,7 @@ const (
 	SettingsCommits
 	SettingsNaming
 	SettingsAI
+	SettingsUI
 )
 
 // SettingsView represents the settings tab view
@@ -67,6 +68,10 @@ type SettingsView struct {
 	aiFallbackModel  Dropdown
 	aiMaxDiffSize    TextInput
 	aiIncludeContext Checkbox
+
+	// UI settings fields
+	uiTheme         Dropdown
+	originalTheme   string // Track original theme for preview/revert
 
 	// State
 	hasChanges bool
@@ -225,7 +230,22 @@ func NewSettingsView(cfg *domain.Config, cfgManager *config.Manager) *SettingsVi
 		aiFallbackModel:  NewDropdown("Fallback Model", models, fallbackModelIdx),
 		aiMaxDiffSize:    aiMaxDiffSizeInput,
 		aiIncludeContext: NewCheckbox("Include commit history context", cfg.AI.IncludeContext),
+
+		// UI
+		uiTheme:       NewDropdown("Theme", GetThemeNames(), findThemeIndex(cfg.UI.Theme)),
+		originalTheme: cfg.UI.Theme,
 	}
+}
+
+// findThemeIndex finds the index of a theme by name
+func findThemeIndex(themeName string) int {
+	themes := GetThemeNames()
+	for i, name := range themes {
+		if name == themeName {
+			return i
+		}
+	}
+	return 0 // Default to first theme (claude-warm)
 }
 
 // Init initializes the settings view
@@ -265,6 +285,12 @@ func (m SettingsView) Update(msg tea.Msg) (SettingsView, tea.Cmd) {
 		case "a", "A":
 			// Switch to AI tab
 			m.currentTab = SettingsAI
+			m.focusedField = 0
+			return m, nil
+
+		case "u", "U":
+			// Switch to UI tab
+			m.currentTab = SettingsUI
 			m.focusedField = 0
 			return m, nil
 
@@ -320,6 +346,8 @@ func (m SettingsView) getMaxFields() int {
 		return 5
 	case SettingsAI:
 		return 8
+	case SettingsUI:
+		return 1 // theme dropdown only (auto-saves)
 	default:
 		return 1
 	}
@@ -394,6 +422,12 @@ func (m *SettingsView) handleFieldInteraction() {
 		case 6:
 			m.aiIncludeContext.Checked = !m.aiIncludeContext.Checked
 		}
+
+	case SettingsUI:
+		switch m.focusedField {
+		case 0:
+			m.uiTheme.Toggle()
+		}
 	}
 }
 
@@ -439,6 +473,18 @@ func (m *SettingsView) handleLeftKey() {
 			m.aiDefaultModel.Previous()
 		} else if m.focusedField == 4 && m.aiFallbackModel.Open {
 			m.aiFallbackModel.Previous()
+		}
+
+	case SettingsUI:
+		if m.focusedField == 0 && m.uiTheme.Open {
+			m.uiTheme.Previous()
+			// Apply theme immediately and save to config
+			selectedTheme := m.uiTheme.GetSelected()
+			SetGlobalTheme(selectedTheme)
+			m.cfg.UI.Theme = selectedTheme
+			m.originalTheme = selectedTheme
+			// Auto-save config
+			_ = m.cfgManager.Save(m.cfg)
 		}
 	}
 }
@@ -493,6 +539,18 @@ func (m *SettingsView) handleRightKey() {
 			if m.aiFallbackModel.Open {
 				m.aiFallbackModel.Next()
 			}
+		}
+
+	case SettingsUI:
+		if m.focusedField == 0 && m.uiTheme.Open {
+			m.uiTheme.Next()
+			// Apply theme immediately and save to config
+			selectedTheme := m.uiTheme.GetSelected()
+			SetGlobalTheme(selectedTheme)
+			m.cfg.UI.Theme = selectedTheme
+			m.originalTheme = selectedTheme
+			// Auto-save config
+			_ = m.cfgManager.Save(m.cfg)
 		}
 	}
 }
@@ -608,10 +666,21 @@ func (m *SettingsView) updateConfigFromFields() {
 	if m.aiMaxDiffSize.Value != "" {
 		_, _ = fmt.Sscanf(m.aiMaxDiffSize.Value, "%d", &m.cfg.AI.MaxDiffSize)
 	}
+
+	// UI
+	selectedTheme := m.uiTheme.GetSelected()
+	m.cfg.UI.Theme = selectedTheme
+
+	// Hot-swap theme immediately after saving
+	SetGlobalTheme(selectedTheme)
+
+	// Update original theme so it's not reverted on tab switch
+	m.originalTheme = selectedTheme
 }
 
 // View renders the settings view
 func (m SettingsView) View() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	var sections []string
 
 	// Nested tab bar
@@ -627,15 +696,15 @@ func (m SettingsView) View() string {
 	if m.hasChanges {
 		sections = append(sections, "")
 		sections = append(sections, lipgloss.NewStyle().
-			Foreground(colorWarning).
+			Foreground(styles.ColorWarning).
 			Render("* Unsaved changes"))
 	}
 
 	if m.saveStatus != "" {
 		sections = append(sections, "")
-		statusStyle := lipgloss.NewStyle().Foreground(colorSuccess)
+		statusStyle := lipgloss.NewStyle().Foreground(styles.ColorSuccess)
 		if strings.HasPrefix(m.saveStatus, "Error") {
-			statusStyle = lipgloss.NewStyle().Foreground(colorError)
+			statusStyle = lipgloss.NewStyle().Foreground(styles.ColorError)
 		}
 		sections = append(sections, statusStyle.Render(m.saveStatus))
 	}
@@ -644,10 +713,10 @@ func (m SettingsView) View() string {
 	sections = append(sections, renderSeparator(70))
 
 	// Footer
-	footer := footerStyle.Render(
-		shortcutKeyStyle.Render("G/H/C/N/A") + " " + shortcutDescStyle.Render("Switch Tab") + "  " +
-			shortcutKeyStyle.Render("Tab/↑↓") + " " + shortcutDescStyle.Render("Navigate") + "  " +
-			shortcutKeyStyle.Render("S") + " " + shortcutDescStyle.Render("Save"))
+	footer := styles.Footer.Render(
+		styles.ShortcutKey.Render("G/H/C/N/A/U") + " " + styles.ShortcutDesc.Render("Switch Tab") + "  " +
+			styles.ShortcutKey.Render("Tab/↑↓") + " " + styles.ShortcutDesc.Render("Navigate") + "  " +
+			styles.ShortcutKey.Render("S") + " " + styles.ShortcutDesc.Render("Save"))
 	sections = append(sections, footer)
 
 	return lipgloss.JoinVertical(lipgloss.Left, sections...)
@@ -655,6 +724,7 @@ func (m SettingsView) View() string {
 
 // renderNestedTabBar renders the nested tab navigation
 func (m SettingsView) renderNestedTabBar() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	tabs := []struct {
 		name string
 		key  string
@@ -664,15 +734,16 @@ func (m SettingsView) renderNestedTabBar() string {
 		{"Commits", "C"},
 		{"Naming", "N"},
 		{"AI", "A"},
+		{"UI", "U"},
 	}
 	var tabViews []string
 
 	for i, tab := range tabs {
 		var style lipgloss.Style
 		if SettingsTab(i) == m.currentTab {
-			style = tabActiveStyle
+			style = styles.TabActive
 		} else {
-			style = tabInactiveStyle
+			style = styles.TabInactive
 		}
 		tabViews = append(tabViews, style.Render(fmt.Sprintf(" [%s] %s ", tab.key, tab.name)))
 	}
@@ -693,6 +764,8 @@ func (m SettingsView) renderTabContent() string {
 		return m.renderNamingSettings()
 	case SettingsAI:
 		return m.renderAISettings()
+	case SettingsUI:
+		return m.renderUISettings()
 	default:
 		return ""
 	}
@@ -700,9 +773,10 @@ func (m SettingsView) renderTabContent() string {
 
 // renderGitSettings renders Git configuration settings
 func (m SettingsView) renderGitSettings() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
 
-	lines = append(lines, formLabelStyle.Render("Git Configuration"))
+	lines = append(lines, styles.FormLabel.Render("Git Configuration"))
 	lines = append(lines, "")
 
 	// Main branch
@@ -736,9 +810,10 @@ func (m SettingsView) renderGitSettings() string {
 
 // renderGitHubSettings renders GitHub configuration settings
 func (m SettingsView) renderGitHubSettings() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
 
-	lines = append(lines, formLabelStyle.Render("GitHub Integration"))
+	lines = append(lines, styles.FormLabel.Render("GitHub Integration"))
 	lines = append(lines, "")
 
 	// Enabled checkbox
@@ -762,7 +837,7 @@ func (m SettingsView) renderGitHubSettings() string {
 	lines = append(lines, "")
 
 	// Options
-	lines = append(lines, formLabelStyle.Render("Default Options:"))
+	lines = append(lines, styles.FormLabel.Render("Default Options:"))
 	m.ghEnableIssues.Focused = (m.focusedField == 4)
 	lines = append(lines, "  "+m.ghEnableIssues.View())
 	m.ghEnableWiki.Focused = (m.focusedField == 5)
@@ -781,9 +856,10 @@ func (m SettingsView) renderGitHubSettings() string {
 
 // renderCommitsSettings renders commit convention settings
 func (m SettingsView) renderCommitsSettings() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
 
-	lines = append(lines, formLabelStyle.Render("Commit Conventions"))
+	lines = append(lines, styles.FormLabel.Render("Commit Conventions"))
 	lines = append(lines, "")
 
 	// Convention selection
@@ -820,9 +896,10 @@ func (m SettingsView) renderCommitsSettings() string {
 
 // renderNamingSettings renders branch naming pattern settings
 func (m SettingsView) renderNamingSettings() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
 
-	lines = append(lines, formLabelStyle.Render("Branch Naming Patterns"))
+	lines = append(lines, styles.FormLabel.Render("Branch Naming Patterns"))
 	lines = append(lines, "")
 
 	// Enforce checkbox
@@ -855,9 +932,10 @@ func (m SettingsView) renderNamingSettings() string {
 
 // renderAISettings renders AI provider configuration settings
 func (m SettingsView) renderAISettings() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
 
-	lines = append(lines, formLabelStyle.Render("AI Provider Configuration"))
+	lines = append(lines, styles.FormLabel.Render("AI Provider Configuration"))
 	lines = append(lines, "")
 
 	// Provider
@@ -899,6 +977,43 @@ func (m SettingsView) renderAISettings() string {
 	saveBtn := NewButton("Save Changes")
 	saveBtn.Focused = (m.focusedField == 7)
 	lines = append(lines, saveBtn.View())
+
+	return strings.Join(lines, "\n")
+}
+
+// renderUISettings renders UI/theme configuration settings
+func (m SettingsView) renderUISettings() string {
+	styles := GetGlobalThemeManager().GetStyles()
+	var lines []string
+
+	lines = append(lines, styles.FormLabel.Render("User Interface Configuration"))
+	lines = append(lines, "")
+
+	// Theme dropdown
+	m.uiTheme.Focused = (m.focusedField == 0)
+	lines = append(lines, m.uiTheme.View())
+	lines = append(lines, "")
+
+	// Theme preview
+	currentTheme := GetGlobalThemeManager().GetCurrentTheme()
+	previewLines := []string{
+		"",
+		"Preview:",
+		"  " + styles.StatusOk.Render("Success") + "  " +
+			styles.StatusWarning.Render("Warning") + "  " +
+			styles.StatusError.Render("Error") + "  " +
+			styles.StatusInfo.Render("Info"),
+		"  Primary: " + lipgloss.NewStyle().Foreground(styles.ColorPrimary).Render("███"),
+		"  " + lipgloss.NewStyle().Foreground(styles.ColorMuted).Italic(true).
+			Render("Theme: "+currentTheme.Description),
+		"",
+	}
+	lines = append(lines, strings.Join(previewLines, "\n"))
+
+	// Help text
+	helpText := lipgloss.NewStyle().Foreground(styles.ColorMuted).Italic(true).
+		Render("Note: Theme changes are applied and saved automatically.")
+	lines = append(lines, helpText)
 
 	return strings.Join(lines, "\n")
 }

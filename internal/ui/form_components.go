@@ -52,8 +52,9 @@ func (t *TextInput) Update(msg tea.KeyMsg) {
 
 // View renders the text input
 func (t TextInput) View() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	// Label
-	label := formLabelStyle.Render(t.Label + ":")
+	label := styles.FormLabel.Render(t.Label + ":")
 
 	// Input value or placeholder
 	displayValue := t.Value
@@ -73,16 +74,16 @@ func (t TextInput) View() string {
 	// Input field
 	var inputStyle lipgloss.Style
 	if t.Focused {
-		inputStyle = formInputFocusedStyle.Width(t.Width)
+		inputStyle = styles.FormInputFocused.Width(t.Width)
 		// Apply different text color for the value vs placeholder
 		if t.Value == "" {
-			displayValue = lipgloss.NewStyle().Foreground(colorMuted).Render(t.Placeholder) +
-				lipgloss.NewStyle().Foreground(colorPrimary).Render("█")
+			displayValue = lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(t.Placeholder) +
+				lipgloss.NewStyle().Foreground(styles.ColorPrimary).Render("█")
 		}
 	} else {
-		inputStyle = formInputStyle.Width(t.Width)
+		inputStyle = styles.FormInput.Width(t.Width)
 		if t.Value == "" {
-			displayValue = lipgloss.NewStyle().Foreground(colorMuted).Render(t.Placeholder)
+			displayValue = lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(t.Placeholder)
 		}
 	}
 
@@ -114,6 +115,7 @@ func (c *Checkbox) Toggle() {
 
 // View renders the checkbox
 func (c Checkbox) View() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	checkbox := "[ ]"
 	if c.Checked {
 		checkbox = "[x]"
@@ -122,10 +124,10 @@ func (c Checkbox) View() string {
 	var style lipgloss.Style
 	prefix := "  "
 	if c.Focused {
-		style = optionCursorStyle
+		style = styles.OptionCursor
 		prefix = "> " // Arrow indicator for focused
 	} else {
-		style = optionNormalStyle
+		style = styles.OptionNormal
 	}
 
 	return prefix + style.Render(checkbox+" "+c.Label)
@@ -161,11 +163,12 @@ func (r *RadioGroup) Previous() {
 
 // View renders the radio group
 func (r RadioGroup) View() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
 
 	// Label
 	if r.Label != "" {
-		lines = append(lines, formLabelStyle.Render(r.Label+":"))
+		lines = append(lines, styles.FormLabel.Render(r.Label+":"))
 	}
 
 	// Options
@@ -180,14 +183,14 @@ func (r RadioGroup) View() string {
 		suffix := ""
 
 		if r.Focused && i == r.Selected {
-			style = optionCursorStyle
+			style = styles.OptionCursor
 			prefix = "> " // Arrow for focused
 			// Show navigation hint on focused option
-			suffix = " " + lipgloss.NewStyle().Foreground(colorMuted).Render("(←/→)")
+			suffix = " " + lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("(←/→)")
 		} else if i == r.Selected {
-			style = optionSelectedStyle
+			style = styles.OptionSelected
 		} else {
-			style = optionNormalStyle
+			style = styles.OptionNormal
 		}
 
 		lines = append(lines, prefix+style.Render(radio+" "+option)+suffix)
@@ -248,11 +251,12 @@ func (c *CheckboxGroup) Toggle() {
 
 // View renders the checkbox group
 func (c CheckboxGroup) View() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
 
 	// Label
 	if c.Label != "" {
-		lines = append(lines, formLabelStyle.Render(c.Label+":"))
+		lines = append(lines, styles.FormLabel.Render(c.Label+":"))
 	}
 
 	// Checkboxes
@@ -294,13 +298,14 @@ func NewButton(label string) Button {
 
 // View renders the button
 func (b Button) View() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	var style lipgloss.Style
 	if !b.Active {
-		style = formButtonInactiveStyle
+		style = styles.FormButtonInactive
 	} else if b.Focused {
-		style = formButtonStyle.Border(lipgloss.RoundedBorder()).BorderForeground(colorPrimary)
+		style = styles.FormButton.Border(lipgloss.RoundedBorder()).BorderForeground(styles.ColorPrimary)
 	} else {
-		style = formButtonStyle
+		style = styles.FormButton
 	}
 
 	return style.Render(b.Label)
@@ -343,7 +348,8 @@ func (d *Dropdown) Toggle() {
 
 // View renders the dropdown
 func (d Dropdown) View() string {
-	label := formLabelStyle.Render(d.Label + ":")
+	styles := GetGlobalThemeManager().GetStyles()
+	label := styles.FormLabel.Render(d.Label + ":")
 
 	selectedValue := d.Options[d.Selected]
 	arrow := "▼"
@@ -353,15 +359,15 @@ func (d Dropdown) View() string {
 		arrow = "▲"
 		if d.Focused {
 			// Show navigation hint when dropdown is open and focused
-			navHint = " " + lipgloss.NewStyle().Foreground(colorMuted).Render("(←/→)")
+			navHint = " " + lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("(←/→)")
 		}
 	}
 
 	var style lipgloss.Style
 	if d.Focused {
-		style = formInputFocusedStyle.Width(38)
+		style = styles.FormInputFocused.Width(38)
 	} else {
-		style = formInputStyle.Width(38)
+		style = styles.FormInput.Width(38)
 	}
 
 	dropdown := style.Render(selectedValue + " " + arrow)
@@ -373,9 +379,9 @@ func (d Dropdown) View() string {
 		var options []string
 		for i, opt := range d.Options {
 			if i == d.Selected {
-				options = append(options, optionSelectedStyle.Render("  > "+opt))
+				options = append(options, styles.OptionSelected.Render("  > "+opt))
 			} else {
-				options = append(options, optionNormalStyle.Render("    "+opt))
+				options = append(options, styles.OptionNormal.Render("    "+opt))
 			}
 		}
 		result += "\n" + strings.Join(options, "\n")
@@ -399,5 +405,6 @@ type HelpText struct {
 
 // View renders the help text
 func (h HelpText) View() string {
-	return formHelpStyle.Render(h.Text)
+	styles := GetGlobalThemeManager().GetStyles()
+	return styles.FormHelp.Render(h.Text)
 }

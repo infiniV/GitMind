@@ -6,64 +6,74 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-var (
-	successPrefix = lipgloss.NewStyle().
-			Foreground(colorSuccess).
-			Bold(true).
-			Render("[SUCCESS]")
+// Helper functions to get styled prefixes (these use the current theme)
+func getSuccessPrefix() string {
+	return lipgloss.NewStyle().
+		Foreground(GetGlobalThemeManager().GetStyles().ColorSuccess).
+		Bold(true).
+		Render("[SUCCESS]")
+}
 
-	errorPrefix = lipgloss.NewStyle().
-			Foreground(colorError).
-			Bold(true).
-			Render("[ERROR]")
+func getErrorPrefix() string {
+	return lipgloss.NewStyle().
+		Foreground(GetGlobalThemeManager().GetStyles().ColorError).
+		Bold(true).
+		Render("[ERROR]")
+}
 
-	infoPrefix = lipgloss.NewStyle().
-			Foreground(colorPrimary).
-			Bold(true).
-			Render("[INFO]")
+func getInfoPrefix() string {
+	return lipgloss.NewStyle().
+		Foreground(GetGlobalThemeManager().GetStyles().ColorPrimary).
+		Bold(true).
+		Render("[INFO]")
+}
 
-	warningPrefix = lipgloss.NewStyle().
-			Foreground(colorWarning).
-			Bold(true).
-			Render("[WARNING]")
-)
+func getWarningPrefix() string {
+	return lipgloss.NewStyle().
+		Foreground(GetGlobalThemeManager().GetStyles().ColorWarning).
+		Bold(true).
+		Render("[WARNING]")
+}
 
 // PrintSuccess prints a success message
 func PrintSuccess(message string) {
-	fmt.Printf("%s %s\n", successPrefix, message)
+	fmt.Printf("%s %s\n", getSuccessPrefix(), message)
 }
 
 // PrintError prints an error message
 func PrintError(message string) {
-	fmt.Printf("%s %s\n", errorPrefix, message)
+	fmt.Printf("%s %s\n", getErrorPrefix(), message)
 }
 
 // PrintInfo prints an info message
 func PrintInfo(message string) {
-	fmt.Printf("%s %s\n", infoPrefix, message)
+	fmt.Printf("%s %s\n", getInfoPrefix(), message)
 }
 
 // PrintWarning prints a warning message
 func PrintWarning(message string) {
-	fmt.Printf("%s %s\n", warningPrefix, message)
+	fmt.Printf("%s %s\n", getWarningPrefix(), message)
 }
 
 // PrintSubtle prints a muted/subtle message
 func PrintSubtle(message string) {
-	fmt.Println(lipgloss.NewStyle().Foreground(colorMuted).Render(message))
+	styles := GetGlobalThemeManager().GetStyles()
+	fmt.Println(lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(message))
 }
 
 // FormatValue highlights a value in output
 func FormatValue(value string) string {
+	styles := GetGlobalThemeManager().GetStyles()
 	return lipgloss.NewStyle().
-		Foreground(colorPrimary).
+		Foreground(styles.ColorPrimary).
 		Bold(true).
 		Render(value)
 }
 
 // FormatLabel formats a label
 func FormatLabel(label string) string {
+	styles := GetGlobalThemeManager().GetStyles()
 	return lipgloss.NewStyle().
-		Foreground(colorMuted).
+		Foreground(styles.ColorMuted).
 		Render(label)
 }

@@ -12,6 +12,7 @@ type Config struct {
 	Commits CommitsConfig `json:"commits"`
 	Naming  NamingConfig  `json:"naming"`
 	AI      AIConfig      `json:"ai"`
+	UI      UIConfig      `json:"ui"`
 }
 
 // GitConfig holds git-related configuration
@@ -60,6 +61,11 @@ type AIConfig struct {
 	IncludeContext bool   `json:"include_context"`
 }
 
+// UIConfig holds UI/theme settings
+type UIConfig struct {
+	Theme string `json:"theme"` // Theme name (e.g., "claude-warm", "ocean-blue")
+}
+
 // NewDefaultConfig creates a new config with sensible defaults
 func NewDefaultConfig() *Config {
 	return &Config{
@@ -99,6 +105,9 @@ func NewDefaultConfig() *Config {
 			FallbackModel:  "llama3.1-8b",
 			MaxDiffSize:    100000,
 			IncludeContext: true,
+		},
+		UI: UIConfig{
+			Theme: "claude-warm",
 		},
 	}
 }

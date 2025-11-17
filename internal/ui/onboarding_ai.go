@@ -237,20 +237,21 @@ func (m *OnboardingAIScreen) saveToConfig() {
 
 // View renders the AI screen
 func (m OnboardingAIScreen) View() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	var sections []string
 
 	// Header
-	header := headerStyle.Render("AI Provider Configuration")
+	header := styles.Header.Render("AI Provider Configuration")
 	sections = append(sections, header)
 
 	// Progress
 	progress := fmt.Sprintf("Step %d of %d", m.step, m.totalSteps)
-	sections = append(sections, metadataStyle.Render(progress))
+	sections = append(sections, styles.Metadata.Render(progress))
 
 	sections = append(sections, "")
 
 	// Description
-	desc := lipgloss.NewStyle().Foreground(colorMuted).Render(
+	desc := lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(
 		"Configure your AI provider for intelligent commit and merge assistance.")
 	sections = append(sections, desc)
 
@@ -268,7 +269,7 @@ func (m OnboardingAIScreen) View() string {
 
 	// Help text with link
 	helpText := "Get your free API key at: "
-	link := lipgloss.NewStyle().Foreground(colorPrimary).Underline(true).Render("https://cloud.cerebras.ai/")
+	link := lipgloss.NewStyle().Foreground(styles.ColorPrimary).Underline(true).Render("https://cloud.cerebras.ai/")
 	sections = append(sections, HelpText{Text: helpText + link}.View())
 
 	sections = append(sections, "")
@@ -310,7 +311,7 @@ func (m OnboardingAIScreen) View() string {
 
 	// Error message
 	if m.error != "" {
-		sections = append(sections, statusErrorStyle.Render("Error: "+m.error))
+		sections = append(sections, styles.StatusError.Render("Error: "+m.error))
 		sections = append(sections, "")
 	}
 
@@ -324,10 +325,10 @@ func (m OnboardingAIScreen) View() string {
 	sections = append(sections, renderSeparator(70))
 
 	// Footer
-	footer := footerStyle.Render(
-		shortcutKeyStyle.Render("Tab/↑↓")+" "+shortcutDescStyle.Render("Navigate")+"  "+
-			shortcutKeyStyle.Render("Space/←→")+" "+shortcutDescStyle.Render("Select")+"  "+
-			shortcutKeyStyle.Render("←")+" "+shortcutDescStyle.Render("Back"))
+	footer := styles.Footer.Render(
+		styles.ShortcutKey.Render("Tab/↑↓")+" "+styles.ShortcutDesc.Render("Navigate")+"  "+
+			styles.ShortcutKey.Render("Space/←→")+" "+styles.ShortcutDesc.Render("Select")+"  "+
+			styles.ShortcutKey.Render("←")+" "+styles.ShortcutDesc.Render("Back"))
 	sections = append(sections, footer)
 
 	return strings.Join(sections, "\n")

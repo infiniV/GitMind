@@ -50,6 +50,7 @@ func (m OnboardingWelcomeScreen) Update(msg tea.Msg) (OnboardingWelcomeScreen, t
 
 // View renders the welcome screen
 func (m OnboardingWelcomeScreen) View() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	var sections []string
 
 	sections = append(sections, "")
@@ -57,7 +58,7 @@ func (m OnboardingWelcomeScreen) View() string {
 
 	// ASCII Art Logo
 	logoStyle := lipgloss.NewStyle().
-		Foreground(colorPrimary).
+		Foreground(styles.ColorPrimary).
 		Bold(true).
 		Align(lipgloss.Center)
 
@@ -74,7 +75,7 @@ func (m OnboardingWelcomeScreen) View() string {
 
 	// Tagline
 	taglineStyle := lipgloss.NewStyle().
-		Foreground(colorMuted).
+		Foreground(styles.ColorMuted).
 		Italic(true).
 		Align(lipgloss.Center).
 		MarginTop(1).
@@ -85,7 +86,7 @@ func (m OnboardingWelcomeScreen) View() string {
 
 	// Progress indicator
 	progressStyle := lipgloss.NewStyle().
-		Foreground(colorMuted).
+		Foreground(styles.ColorMuted).
 		Align(lipgloss.Center).
 		MarginBottom(3)
 
@@ -94,7 +95,7 @@ func (m OnboardingWelcomeScreen) View() string {
 
 	// Welcome message
 	welcomeStyle := lipgloss.NewStyle().
-		Foreground(colorText).
+		Foreground(styles.ColorText).
 		Align(lipgloss.Center).
 		Width(70).
 		MarginBottom(2)
@@ -108,7 +109,7 @@ func (m OnboardingWelcomeScreen) View() string {
 
 	// Separator
 	separatorStyle := lipgloss.NewStyle().
-		Foreground(colorBorder).
+		Foreground(styles.ColorBorder).
 		Align(lipgloss.Center)
 
 	sections = append(sections, separatorStyle.Render(strings.Repeat("─", 70)))
@@ -116,13 +117,13 @@ func (m OnboardingWelcomeScreen) View() string {
 
 	// Footer with enhanced styling
 	footerStyle := lipgloss.NewStyle().
-		Foreground(colorMuted).
+		Foreground(styles.ColorMuted).
 		Align(lipgloss.Center).
 		MarginTop(1)
 
 	footer := footerStyle.Render(
-		shortcutKeyStyle.Render("Enter") + " " + shortcutDescStyle.Render("Continue") + "    " +
-			shortcutKeyStyle.Render("Esc") + " " + shortcutDescStyle.Render("Skip setup"),
+		styles.ShortcutKey.Render("Enter") + " " + styles.ShortcutDesc.Render("Continue") + "    " +
+			styles.ShortcutKey.Render("Esc") + " " + styles.ShortcutDesc.Render("Skip setup"),
 	)
 	sections = append(sections, footer)
 
@@ -139,18 +140,19 @@ func (m OnboardingWelcomeScreen) renderProgressBar() string {
 	totalDots := 8
 	currentDot := m.step
 
+	styles := GetGlobalThemeManager().GetStyles()
 	var dots []string
 	for i := 1; i <= totalDots; i++ {
 		if i == currentDot {
-			dots = append(dots, lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render("●"))
+			dots = append(dots, lipgloss.NewStyle().Foreground(styles.ColorPrimary).Bold(true).Render("●"))
 		} else if i < currentDot {
-			dots = append(dots, lipgloss.NewStyle().Foreground(colorSuccess).Render("●"))
+			dots = append(dots, lipgloss.NewStyle().Foreground(styles.ColorSuccess).Render("●"))
 		} else {
-			dots = append(dots, lipgloss.NewStyle().Foreground(colorMuted).Render("○"))
+			dots = append(dots, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("○"))
 		}
 	}
 
-	progressText := lipgloss.NewStyle().Foreground(colorMuted).Render(
+	progressText := lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(
 		fmt.Sprintf("Step %d of %d", m.step, m.totalSteps),
 	)
 

@@ -403,23 +403,25 @@ func (m *DashboardModel) checkLoading() {
 
 // View renders the dashboard
 func (m DashboardModel) View() string {
+	styles := GetGlobalThemeManager().GetStyles()
+
 	if m.err != nil {
 		return lipgloss.NewStyle().
-			Foreground(colorError).
+			Foreground(styles.ColorError).
 			Bold(true).
 			Render(fmt.Sprintf("ERROR: %v\n", m.err))
 	}
 
 	if m.loading {
 		return lipgloss.NewStyle().
-			Foreground(colorPrimary).
+			Foreground(styles.ColorPrimary).
 			Render("Loading dashboard...")
 	}
 
 	var sections []string
 
 	// Header
-	header := headerStyle.Render("GitMind Dashboard")
+	header := styles.Header.Render("GitMind Dashboard")
 	sections = append(sections, header)
 
 	// Card grid (2x3)
@@ -460,17 +462,18 @@ func (m DashboardModel) renderBottomRow() string {
 
 // renderCard wraps content in a card with title
 func (m DashboardModel) renderCard(index int, title, content string) string {
-	style := dashboardCardStyle
+	styles := GetGlobalThemeManager().GetStyles()
+	style := styles.DashboardCard
 	isActive := index == m.selectedCard && m.activeSubmenu == NoSubmenu
 	if isActive {
-		style = dashboardCardActiveStyle
+		style = styles.DashboardCardActive
 	}
 
 	// Title at top (no enter symbol)
-	titleLine := cardTitleStyle.Render(title)
+	titleLine := styles.CardTitle.Render(title)
 
 	// Content with muted style
-	contentStyle := lipgloss.NewStyle().Foreground(colorMuted)
+	contentStyle := lipgloss.NewStyle().Foreground(styles.ColorMuted)
 	contentStr := contentStyle.Render(content)
 
 	// Build fixed-size interior: title at top, content at bottom with spacing
@@ -505,12 +508,13 @@ func (m DashboardModel) renderRepoStatusCard() string {
 	lines = append(lines, branch)
 
 	// Line 2: Clean or file count
+	styles := GetGlobalThemeManager().GetStyles()
 	if m.repo.HasChanges() {
 		fileCount := m.repo.TotalChanges()
 		statusText := fmt.Sprintf("%d file(s) changed", fileCount)
-		lines = append(lines, statusWarningStyle.Render(statusText))
+		lines = append(lines, styles.StatusWarning.Render(statusText))
 	} else {
-		lines = append(lines, statusOkStyle.Render("Clean"))
+		lines = append(lines, styles.StatusOk.Render("Clean"))
 	}
 
 	// Line 3: +additions -deletions (only if has changes)
@@ -518,7 +522,7 @@ func (m DashboardModel) renderRepoStatusCard() string {
 		additions := m.repo.TotalAdditions()
 		deletions := m.repo.TotalDeletions()
 		diffText := fmt.Sprintf("+%d -%d", additions, deletions)
-		lines = append(lines, lipgloss.NewStyle().Foreground(colorMuted).Render(diffText))
+		lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(diffText))
 	} else {
 		lines = append(lines, "")
 	}
@@ -530,25 +534,25 @@ func (m DashboardModel) renderRepoStatusCard() string {
 		// Add remote type indicator
 		var remoteIndicator string
 		if m.repo.IsGitHubRemote() {
-			remoteIndicator = statusInfoStyle.Render("→ GitHub")
+			remoteIndicator = styles.StatusInfo.Render("→ GitHub")
 		} else {
-			remoteIndicator = lipgloss.NewStyle().Foreground(colorMuted).Render("→ Remote")
+			remoteIndicator = lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("→ Remote")
 		}
 
 		// Colorize sync status
 		var syncStatusStyled string
 		if syncStatus == "synced" {
-			syncStatusStyled = statusOkStyle.Render("synced")
+			syncStatusStyled = styles.StatusOk.Render("synced")
 		} else if syncStatus == "no remote" {
-			syncStatusStyled = lipgloss.NewStyle().Foreground(colorMuted).Render("-")
+			syncStatusStyled = lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("-")
 		} else {
 			// Has ahead/behind indicators
-			syncStatusStyled = lipgloss.NewStyle().Foreground(colorMuted).Render(syncStatus)
+			syncStatusStyled = lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(syncStatus)
 		}
 
 		lines = append(lines, syncStatusStyled+" "+remoteIndicator)
 	} else {
-		lines = append(lines, lipgloss.NewStyle().Foreground(colorMuted).Render("no remote"))
+		lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("no remote"))
 	}
 
 	return strings.Join(lines, "\n")
@@ -572,7 +576,8 @@ func (m DashboardModel) renderCommitCard() string {
 		lines = append(lines, "")
 		lines = append(lines, "")
 	} else {
-		lines = append(lines, statusOkStyle.Render("No changes"))
+		styles := GetGlobalThemeManager().GetStyles()
+		lines = append(lines, styles.StatusOk.Render("No changes"))
 		lines = append(lines, "")
 		lines = append(lines, "Make changes first")
 		lines = append(lines, "")
@@ -739,99 +744,103 @@ func (m DashboardModel) renderSubmenu() string {
 		content = m.renderRepositoryDetailsMenu()
 	}
 
-	return "\n" + submenuStyle.Render(content)
+	styles := GetGlobalThemeManager().GetStyles()
+	return "\n" + styles.Submenu.Render(content)
 }
 
 // renderCommitOptionsMenu renders commit options submenu
 func (m DashboardModel) renderCommitOptionsMenu() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
-	lines = append(lines, cardTitleStyle.Render("Commit Options"))
+	lines = append(lines, styles.CardTitle.Render("Commit Options"))
 	lines = append(lines, "")
 
 	// Option 0: Conventional commits
 	checkbox := "[ ]"
 	if m.useConventional {
-		checkbox = checkboxStyle.Render("[x]")
+		checkbox = styles.Checkbox.Render("[x]")
 	}
 	opt0 := fmt.Sprintf("%s Conventional commits format", checkbox)
 	if m.submenuIndex == 0 {
-		opt0 = submenuOptionActiveStyle.Render("▶ " + opt0)
+		opt0 = styles.SubmenuOptionActive.Render("▶ " + opt0)
 	} else {
-		opt0 = submenuOptionStyle.Render("  " + opt0)
+		opt0 = styles.SubmenuOption.Render("  " + opt0)
 	}
 	lines = append(lines, opt0)
 
 	// Option 1: Custom message (placeholder)
 	opt1 := "  Add custom context (not implemented)"
 	if m.submenuIndex == 1 {
-		opt1 = submenuOptionActiveStyle.Render("▶ Add custom context (not implemented)")
+		opt1 = styles.SubmenuOptionActive.Render("▶ Add custom context (not implemented)")
 	} else {
-		opt1 = submenuOptionStyle.Render(opt1)
+		opt1 = styles.SubmenuOption.Render(opt1)
 	}
 	lines = append(lines, opt1)
 
 	// Option 2: Execute
 	opt2 := "  Analyze and commit"
 	if m.submenuIndex == 2 {
-		opt2 = submenuOptionActiveStyle.Render("▶ " + statusInfoStyle.Render("Analyze and commit"))
+		opt2 = styles.SubmenuOptionActive.Render("▶ " + styles.StatusInfo.Render("Analyze and commit"))
 	} else {
-		opt2 = submenuOptionStyle.Render(opt2)
+		opt2 = styles.SubmenuOption.Render(opt2)
 	}
 	lines = append(lines, opt2)
 
 	lines = append(lines, "")
-	lines = append(lines, shortcutDescStyle.Render("Space: toggle  •  Enter: select  •  Esc: cancel"))
+	lines = append(lines, styles.ShortcutDesc.Render("Space: toggle  •  Enter: select  •  Esc: cancel"))
 
 	return strings.Join(lines, "\n")
 }
 
 // renderMergeOptionsMenu renders merge options submenu
 func (m DashboardModel) renderMergeOptionsMenu() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
-	lines = append(lines, cardTitleStyle.Render("Merge Options"))
+	lines = append(lines, styles.CardTitle.Render("Merge Options"))
 	lines = append(lines, "")
 
 	// Option 0: Source branch (placeholder)
 	opt0 := "  Specify source branch (not implemented)"
 	if m.submenuIndex == 0 {
-		opt0 = submenuOptionActiveStyle.Render("▶ Specify source branch (not implemented)")
+		opt0 = styles.SubmenuOptionActive.Render("▶ Specify source branch (not implemented)")
 	} else {
-		opt0 = submenuOptionStyle.Render(opt0)
+		opt0 = styles.SubmenuOption.Render(opt0)
 	}
 	lines = append(lines, opt0)
 
 	// Option 1: Target branch (placeholder)
 	opt1 := "  Specify target branch (not implemented)"
 	if m.submenuIndex == 1 {
-		opt1 = submenuOptionActiveStyle.Render("▶ Specify target branch (not implemented)")
+		opt1 = styles.SubmenuOptionActive.Render("▶ Specify target branch (not implemented)")
 	} else {
-		opt1 = submenuOptionStyle.Render(opt1)
+		opt1 = styles.SubmenuOption.Render(opt1)
 	}
 	lines = append(lines, opt1)
 
 	// Option 2: Execute
 	opt2 := "  Auto-detect and merge"
 	if m.submenuIndex == 2 {
-		opt2 = submenuOptionActiveStyle.Render("▶ " + statusInfoStyle.Render("Auto-detect and merge"))
+		opt2 = styles.SubmenuOptionActive.Render("▶ " + styles.StatusInfo.Render("Auto-detect and merge"))
 	} else {
-		opt2 = submenuOptionStyle.Render(opt2)
+		opt2 = styles.SubmenuOption.Render(opt2)
 	}
 	lines = append(lines, opt2)
 
 	lines = append(lines, "")
-	lines = append(lines, shortcutDescStyle.Render("Enter: select  •  Esc: cancel"))
+	lines = append(lines, styles.ShortcutDesc.Render("Enter: select  •  Esc: cancel"))
 
 	return strings.Join(lines, "\n")
 }
 
 // renderCommitListMenu renders scrollable commit list
 func (m DashboardModel) renderCommitListMenu() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
-	lines = append(lines, cardTitleStyle.Render("Recent Commits"))
+	lines = append(lines, styles.CardTitle.Render("Recent Commits"))
 	lines = append(lines, "")
 
 	if len(m.recentCommits) == 0 {
-		lines = append(lines, submenuOptionStyle.Render("No commits yet"))
+		lines = append(lines, styles.SubmenuOption.Render("No commits yet"))
 	} else {
 		maxDisplay := 10
 		if len(m.recentCommits) < maxDisplay {
@@ -840,7 +849,7 @@ func (m DashboardModel) renderCommitListMenu() string {
 
 		for i := 0; i < maxDisplay; i++ {
 			commit := m.recentCommits[i]
-			hash := statusInfoStyle.Render(commit.Hash[:7])
+			hash := styles.StatusInfo.Render(commit.Hash[:7])
 			msg := commit.Message
 			if len(msg) > 50 {
 				msg = msg[:47] + "..."
@@ -848,28 +857,29 @@ func (m DashboardModel) renderCommitListMenu() string {
 
 			line := fmt.Sprintf("%s  %s", hash, msg)
 			if i == m.submenuIndex {
-				line = submenuOptionActiveStyle.Render("▶ " + line)
+				line = styles.SubmenuOptionActive.Render("▶ " + line)
 			} else {
-				line = submenuOptionStyle.Render("  " + line)
+				line = styles.SubmenuOption.Render("  " + line)
 			}
 			lines = append(lines, line)
 		}
 	}
 
 	lines = append(lines, "")
-	lines = append(lines, shortcutDescStyle.Render("↑/↓: navigate  •  Esc: close"))
+	lines = append(lines, styles.ShortcutDesc.Render("↑/↓: navigate  •  Esc: close"))
 
 	return strings.Join(lines, "\n")
 }
 
 // renderBranchListMenu renders scrollable branch list
 func (m DashboardModel) renderBranchListMenu() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
-	lines = append(lines, cardTitleStyle.Render("Switch Branch"))
+	lines = append(lines, styles.CardTitle.Render("Switch Branch"))
 	lines = append(lines, "")
 
 	if len(m.branches) == 0 {
-		lines = append(lines, submenuOptionStyle.Render("No branches"))
+		lines = append(lines, styles.SubmenuOption.Render("No branches"))
 	} else {
 		maxDisplay := 10
 		if len(m.branches) < maxDisplay {
@@ -882,50 +892,51 @@ func (m DashboardModel) renderBranchListMenu() string {
 
 			indicator := "  "
 			if isCurrent {
-				indicator = statusOkStyle.Render("* ")
+				indicator = styles.StatusOk.Render("* ")
 			}
 
 			line := indicator + branch
 			if i == m.submenuIndex {
-				line = submenuOptionActiveStyle.Render("▶ " + line)
+				line = styles.SubmenuOptionActive.Render("▶ " + line)
 			} else {
-				line = submenuOptionStyle.Render("  " + line)
+				line = styles.SubmenuOption.Render("  " + line)
 			}
 			lines = append(lines, line)
 		}
 	}
 
 	lines = append(lines, "")
-	lines = append(lines, shortcutDescStyle.Render("↑/↓: navigate  •  Enter: switch  •  Esc: cancel"))
+	lines = append(lines, styles.ShortcutDesc.Render("↑/↓: navigate  •  Enter: switch  •  Esc: cancel"))
 
 	return strings.Join(lines, "\n")
 }
 
 // renderQuickStatusMenu renders detailed status
 func (m DashboardModel) renderQuickStatusMenu() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
-	lines = append(lines, cardTitleStyle.Render("Repository Status"))
+	lines = append(lines, styles.CardTitle.Render("Repository Status"))
 	lines = append(lines, "")
 
 	if m.repo == nil {
-		lines = append(lines, submenuOptionStyle.Render("Loading..."))
+		lines = append(lines, styles.SubmenuOption.Render("Loading..."))
 	} else {
-		lines = append(lines, repoLabelStyle.Render("Path:")+" "+repoValueStyle.Render(m.repo.Path()))
-		lines = append(lines, repoLabelStyle.Render("Branch:")+" "+repoValueStyle.Render(m.repo.CurrentBranch()))
+		lines = append(lines, styles.RepoLabel.Render("Path:")+" "+styles.RepoValue.Render(m.repo.Path()))
+		lines = append(lines, styles.RepoLabel.Render("Branch:")+" "+styles.RepoValue.Render(m.repo.CurrentBranch()))
 
 		if m.branchInfo != nil {
-			lines = append(lines, repoLabelStyle.Render("Type:")+" "+repoValueStyle.Render(string(m.branchInfo.Type())))
+			lines = append(lines, styles.RepoLabel.Render("Type:")+" "+styles.RepoValue.Render(string(m.branchInfo.Type())))
 			if m.branchInfo.Parent() != "" {
-				lines = append(lines, repoLabelStyle.Render("Parent:")+" "+repoValueStyle.Render(m.branchInfo.Parent()))
+				lines = append(lines, styles.RepoLabel.Render("Parent:")+" "+styles.RepoValue.Render(m.branchInfo.Parent()))
 			}
 		}
 
 		lines = append(lines, "")
-		lines = append(lines, repoLabelStyle.Render("Changes:")+" "+repoValueStyle.Render(m.repo.ChangeSummary()))
+		lines = append(lines, styles.RepoLabel.Render("Changes:")+" "+styles.RepoValue.Render(m.repo.ChangeSummary()))
 
 		if m.repo.HasChanges() {
 			lines = append(lines, "")
-			lines = append(lines, submenuOptionStyle.Render("Modified files:"))
+			lines = append(lines, styles.SubmenuOption.Render("Modified files:"))
 			changes := m.repo.Changes()
 			maxFiles := 5
 			if len(changes) < maxFiles {
@@ -933,71 +944,73 @@ func (m DashboardModel) renderQuickStatusMenu() string {
 			}
 			for i := 0; i < maxFiles; i++ {
 				change := changes[i]
-				lines = append(lines, submenuOptionStyle.Render(fmt.Sprintf("  %s (+%d -%d)", change.Path, change.Additions, change.Deletions)))
+				lines = append(lines, styles.SubmenuOption.Render(fmt.Sprintf("  %s (+%d -%d)", change.Path, change.Additions, change.Deletions)))
 			}
 			if len(changes) > maxFiles {
-				lines = append(lines, submenuOptionStyle.Render(fmt.Sprintf("  ... and %d more files", len(changes)-maxFiles)))
+				lines = append(lines, styles.SubmenuOption.Render(fmt.Sprintf("  ... and %d more files", len(changes)-maxFiles)))
 			}
 		}
 	}
 
 	lines = append(lines, "")
-	lines = append(lines, shortcutDescStyle.Render("Esc: close"))
+	lines = append(lines, styles.ShortcutDesc.Render("Esc: close"))
 
 	return strings.Join(lines, "\n")
 }
 
 // renderHelpMenu renders help and shortcuts
 func (m DashboardModel) renderHelpMenu() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
-	lines = append(lines, cardTitleStyle.Render("Help & Shortcuts"))
+	lines = append(lines, styles.CardTitle.Render("Help & Shortcuts"))
 	lines = append(lines, "")
 
-	lines = append(lines, statusInfoStyle.Render("Navigation:"))
-	lines = append(lines, submenuOptionStyle.Render("  ↑↓←→ / hjkl   Navigate cards"))
-	lines = append(lines, submenuOptionStyle.Render("  Tab / ⇧Tab   Cycle through cards"))
-	lines = append(lines, submenuOptionStyle.Render("  Enter         Activate card"))
+	lines = append(lines, styles.StatusInfo.Render("Navigation:"))
+	lines = append(lines, styles.SubmenuOption.Render("  ↑↓←→ / hjkl   Navigate cards"))
+	lines = append(lines, styles.SubmenuOption.Render("  Tab / ⇧Tab   Cycle through cards"))
+	lines = append(lines, styles.SubmenuOption.Render("  Enter         Activate card"))
 	lines = append(lines, "")
 
-	lines = append(lines, statusInfoStyle.Render("Actions:"))
-	lines = append(lines, submenuOptionStyle.Render("  r             Refresh dashboard"))
-	lines = append(lines, submenuOptionStyle.Render("  q / Esc       Quit"))
+	lines = append(lines, styles.StatusInfo.Render("Actions:"))
+	lines = append(lines, styles.SubmenuOption.Render("  r             Refresh dashboard"))
+	lines = append(lines, styles.SubmenuOption.Render("  q / Esc       Quit"))
 	lines = append(lines, "")
 
-	lines = append(lines, statusInfoStyle.Render("Cards:"))
-	lines = append(lines, submenuOptionStyle.Render("  Repository       View current status"))
-	lines = append(lines, submenuOptionStyle.Render("  Commit           Analyze & commit changes"))
-	lines = append(lines, submenuOptionStyle.Render("  Merge            Merge to parent branch"))
-	lines = append(lines, submenuOptionStyle.Render("  Recent Commits   Browse commit history"))
-	lines = append(lines, submenuOptionStyle.Render("  Branches         Switch branches"))
-	lines = append(lines, submenuOptionStyle.Render("  Quick Actions    This help menu"))
+	lines = append(lines, styles.StatusInfo.Render("Cards:"))
+	lines = append(lines, styles.SubmenuOption.Render("  Repository       View current status"))
+	lines = append(lines, styles.SubmenuOption.Render("  Commit           Analyze & commit changes"))
+	lines = append(lines, styles.SubmenuOption.Render("  Merge            Merge to parent branch"))
+	lines = append(lines, styles.SubmenuOption.Render("  Recent Commits   Browse commit history"))
+	lines = append(lines, styles.SubmenuOption.Render("  Branches         Switch branches"))
+	lines = append(lines, styles.SubmenuOption.Render("  Quick Actions    This help menu"))
 
 	lines = append(lines, "")
-	lines = append(lines, shortcutDescStyle.Render("Esc: close"))
+	lines = append(lines, styles.ShortcutDesc.Render("Esc: close"))
 
 	return strings.Join(lines, "\n")
 }
 
 // renderRepositoryDetailsMenu renders repository details and actions submenu
 func (m DashboardModel) renderRepositoryDetailsMenu() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
-	lines = append(lines, cardTitleStyle.Render("REPOSITORY DETAILS"))
+	lines = append(lines, styles.CardTitle.Render("REPOSITORY DETAILS"))
 	lines = append(lines, "")
 
 	if m.repo == nil {
 		lines = append(lines, "Loading repository information...")
 		lines = append(lines, "")
-		lines = append(lines, shortcutDescStyle.Render("Esc: close"))
+		lines = append(lines, styles.ShortcutDesc.Render("Esc: close"))
 		return strings.Join(lines, "\n")
 	}
 
 	// Repository path
-	lines = append(lines, statusInfoStyle.Render("Path:"))
-	lines = append(lines, "  "+lipgloss.NewStyle().Foreground(colorMuted).Render(m.repo.Path()))
+	lines = append(lines, styles.StatusInfo.Render("Path:"))
+	lines = append(lines, "  "+lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(m.repo.Path()))
 	lines = append(lines, "")
 
 	// Branch information
-	lines = append(lines, statusInfoStyle.Render("Branch:"))
+	lines = append(lines, styles.StatusInfo.Render("Branch:"))
 	branchLine := "  " + m.repo.CurrentBranch()
 	if m.branchInfo != nil {
 		branchLine += " (" + string(m.branchInfo.Type()) + ")"
@@ -1005,52 +1018,52 @@ func (m DashboardModel) renderRepositoryDetailsMenu() string {
 			branchLine += " ← " + m.branchInfo.Parent()
 		}
 	}
-	lines = append(lines, lipgloss.NewStyle().Foreground(colorMuted).Render(branchLine))
+	lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(branchLine))
 	lines = append(lines, "")
 
 	// Remote information
 	if m.repo.HasRemote() {
-		lines = append(lines, statusInfoStyle.Render("Remote:"))
+		lines = append(lines, styles.StatusInfo.Render("Remote:"))
 		remoteURL := m.repo.RemoteURL()
 		if len(remoteURL) > 60 {
 			remoteURL = remoteURL[:57] + "..."
 		}
-		lines = append(lines, "  "+lipgloss.NewStyle().Foreground(colorMuted).Render(remoteURL))
+		lines = append(lines, "  "+lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(remoteURL))
 
 		// Sync status
 		statusLine := "  Status: "
 		syncStatus := m.repo.SyncStatusSummary()
 		if syncStatus == "synced" {
-			statusLine += statusOkStyle.Render("synced")
+			statusLine += styles.StatusOk.Render("synced")
 		} else {
 			ahead := m.repo.CommitsAhead()
 			behind := m.repo.CommitsBehind()
 			if ahead > 0 {
-				statusLine += statusInfoStyle.Render(fmt.Sprintf("↑%d ahead", ahead))
+				statusLine += styles.StatusInfo.Render(fmt.Sprintf("↑%d ahead", ahead))
 			}
 			if behind > 0 {
 				if ahead > 0 {
 					statusLine += "  "
 				}
-				statusLine += statusWarningStyle.Render(fmt.Sprintf("↓%d behind", behind))
+				statusLine += styles.StatusWarning.Render(fmt.Sprintf("↓%d behind", behind))
 			}
 		}
 		lines = append(lines, statusLine)
 		lines = append(lines, "")
 	} else {
-		lines = append(lines, statusWarningStyle.Render("Remote:"))
-		lines = append(lines, "  "+lipgloss.NewStyle().Foreground(colorMuted).Render("No remote configured"))
+		lines = append(lines, styles.StatusWarning.Render("Remote:"))
+		lines = append(lines, "  "+lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("No remote configured"))
 		lines = append(lines, "")
 	}
 
 	// Changes summary
-	lines = append(lines, statusInfoStyle.Render("Changes:"))
+	lines = append(lines, styles.StatusInfo.Render("Changes:"))
 	if m.repo.HasChanges() {
 		changeSummary := fmt.Sprintf("  %d files (+%d -%d)",
 			m.repo.TotalChanges(),
 			m.repo.TotalAdditions(),
 			m.repo.TotalDeletions())
-		lines = append(lines, statusWarningStyle.Render(changeSummary))
+		lines = append(lines, styles.StatusWarning.Render(changeSummary))
 
 		// Show modified files (up to 3)
 		changes := m.repo.Changes()
@@ -1064,14 +1077,14 @@ func (m DashboardModel) renderRepositoryDetailsMenu() string {
 				change.Path,
 				change.Additions,
 				change.Deletions)
-			lines = append(lines, lipgloss.NewStyle().Foreground(colorMuted).Render(changeLine))
+			lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(changeLine))
 		}
 		if len(changes) > 3 {
-			lines = append(lines, lipgloss.NewStyle().Foreground(colorMuted).Render(
+			lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(
 				fmt.Sprintf("    ... and %d more", len(changes)-3)))
 		}
 	} else {
-		lines = append(lines, "  "+statusOkStyle.Render("Clean"))
+		lines = append(lines, "  "+styles.StatusOk.Render("Clean"))
 	}
 	lines = append(lines, "")
 
@@ -1080,7 +1093,7 @@ func (m DashboardModel) renderRepositoryDetailsMenu() string {
 	lines = append(lines, "")
 
 	// Actions section
-	lines = append(lines, statusInfoStyle.Render("Actions:"))
+	lines = append(lines, styles.StatusInfo.Render("Actions:"))
 	lines = append(lines, "")
 
 	// Build actions dynamically
@@ -1089,9 +1102,9 @@ func (m DashboardModel) renderRepositoryDetailsMenu() string {
 		// Fetch
 		fetchLine := "Fetch from remote"
 		if actionIndex == m.submenuIndex {
-			fetchLine = submenuOptionActiveStyle.Render("▶ " + fetchLine)
+			fetchLine = styles.SubmenuOptionActive.Render("▶ " + fetchLine)
 		} else {
-			fetchLine = submenuOptionStyle.Render("  " + fetchLine)
+			fetchLine = styles.SubmenuOption.Render("  " + fetchLine)
 		}
 		lines = append(lines, fetchLine)
 		actionIndex++
@@ -1100,9 +1113,9 @@ func (m DashboardModel) renderRepositoryDetailsMenu() string {
 		if m.repo.CommitsBehind() > 0 {
 			pullLine := fmt.Sprintf("Pull from remote (↓%d available)", m.repo.CommitsBehind())
 			if actionIndex == m.submenuIndex {
-				pullLine = submenuOptionActiveStyle.Render("▶ " + pullLine)
+				pullLine = styles.SubmenuOptionActive.Render("▶ " + pullLine)
 			} else {
-				pullLine = submenuOptionStyle.Render("  " + pullLine)
+				pullLine = styles.SubmenuOption.Render("  " + pullLine)
 			}
 			lines = append(lines, pullLine)
 			actionIndex++
@@ -1112,9 +1125,9 @@ func (m DashboardModel) renderRepositoryDetailsMenu() string {
 		if m.repo.CommitsAhead() > 0 {
 			pushLine := fmt.Sprintf("Push to remote (↑%d commits)", m.repo.CommitsAhead())
 			if actionIndex == m.submenuIndex {
-				pushLine = submenuOptionActiveStyle.Render("▶ " + pushLine)
+				pushLine = styles.SubmenuOptionActive.Render("▶ " + pushLine)
 			} else {
-				pushLine = submenuOptionStyle.Render("  " + pushLine)
+				pushLine = styles.SubmenuOption.Render("  " + pushLine)
 			}
 			lines = append(lines, pushLine)
 			actionIndex++
@@ -1125,9 +1138,9 @@ func (m DashboardModel) renderRepositoryDetailsMenu() string {
 			// View on GitHub (web)
 			githubLine := "View on GitHub (web)"
 			if actionIndex == m.submenuIndex {
-				githubLine = submenuOptionActiveStyle.Render("▶ " + githubLine)
+				githubLine = styles.SubmenuOptionActive.Render("▶ " + githubLine)
 			} else {
-				githubLine = submenuOptionStyle.Render("  " + githubLine)
+				githubLine = styles.SubmenuOption.Render("  " + githubLine)
 			}
 			lines = append(lines, githubLine)
 			actionIndex++
@@ -1135,9 +1148,9 @@ func (m DashboardModel) renderRepositoryDetailsMenu() string {
 			// Show GitHub info
 			infoLine := "Show GitHub info"
 			if actionIndex == m.submenuIndex {
-				infoLine = submenuOptionActiveStyle.Render("▶ " + infoLine)
+				infoLine = styles.SubmenuOptionActive.Render("▶ " + infoLine)
 			} else {
-				infoLine = submenuOptionStyle.Render("  " + infoLine)
+				infoLine = styles.SubmenuOption.Render("  " + infoLine)
 			}
 			lines = append(lines, infoLine)
 			actionIndex++
@@ -1146,9 +1159,9 @@ func (m DashboardModel) renderRepositoryDetailsMenu() string {
 		// Setup remote
 		setupLine := "Set up remote"
 		if actionIndex == m.submenuIndex {
-			setupLine = submenuOptionActiveStyle.Render("▶ " + setupLine)
+			setupLine = styles.SubmenuOptionActive.Render("▶ " + setupLine)
 		} else {
-			setupLine = submenuOptionStyle.Render("  " + setupLine)
+			setupLine = styles.SubmenuOption.Render("  " + setupLine)
 		}
 		lines = append(lines, setupLine)
 		actionIndex++
@@ -1157,28 +1170,29 @@ func (m DashboardModel) renderRepositoryDetailsMenu() string {
 	// Refresh (always last)
 	refreshLine := "Refresh status"
 	if actionIndex == m.submenuIndex {
-		refreshLine = submenuOptionActiveStyle.Render("▶ " + refreshLine)
+		refreshLine = styles.SubmenuOptionActive.Render("▶ " + refreshLine)
 	} else {
-		refreshLine = submenuOptionStyle.Render("  " + refreshLine)
+		refreshLine = styles.SubmenuOption.Render("  " + refreshLine)
 	}
 	lines = append(lines, refreshLine)
 
 	lines = append(lines, "")
-	lines = append(lines, shortcutDescStyle.Render("↑/↓: navigate  •  Enter: select  •  Esc: cancel"))
+	lines = append(lines, styles.ShortcutDesc.Render("↑/↓: navigate  •  Enter: select  •  Esc: cancel"))
 
 	return strings.Join(lines, "\n")
 }
 
 // renderFooter renders dashboard footer
 func (m DashboardModel) renderFooter() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	shortcuts := []string{
-		shortcutKeyStyle.Render("↑↓←→/hjkl") + " " + shortcutDescStyle.Render("navigate"),
-		shortcutKeyStyle.Render("enter") + " " + shortcutDescStyle.Render("select"),
-		shortcutKeyStyle.Render("r") + " " + shortcutDescStyle.Render("refresh"),
-		shortcutKeyStyle.Render("q/esc") + " " + shortcutDescStyle.Render("quit"),
+		styles.ShortcutKey.Render("↑↓←→/hjkl") + " " + styles.ShortcutDesc.Render("navigate"),
+		styles.ShortcutKey.Render("enter") + " " + styles.ShortcutDesc.Render("select"),
+		styles.ShortcutKey.Render("r") + " " + styles.ShortcutDesc.Render("refresh"),
+		styles.ShortcutKey.Render("q/esc") + " " + styles.ShortcutDesc.Render("quit"),
 	}
 
-	return footerStyle.Render(strings.Join(shortcuts, "  •  "))
+	return styles.Footer.Render(strings.Join(shortcuts, "  •  "))
 }
 
 // Getters for action results
