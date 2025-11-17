@@ -605,27 +605,59 @@ State changes must happen in the `Update` method, not inside the callback closur
 
 ### Common Bug Pattern
 
-**Bug:** Confirmation dialog not showing in non-dashboard states
+**Bug:** Confirmation dialog not blocking entire screen
 
-**Cause:** Early return in View() before checking `showingConfirmation`:
+**Cause:** Appending modal to existing view instead of replacing it:
 ```go
-// WRONG - returns before confirmation check
+// WRONG - modal appears as small overlay
 if m.state != StateDashboard {
-    return m.commitView.View()  // Early return!
-}
-// Confirmation check never reached
-```
-
-**Fix:** Store view content, check confirmation, then return:
-```go
-// CORRECT - check confirmation before return
-if m.state != StateDashboard {
-    overlayView = m.commitView.View()
+    overlayView = m.mergeView.View()
     if m.showingConfirmation {
-        return overlayView + "\n\n" + m.renderConfirmationDialog()
+        return overlayView + "\n\n" + m.renderConfirmationDialog()  // Appends modal!
     }
     return overlayView
 }
+```
+
+**Fix:** Check for modal FIRST and return ONLY the modal:
+```go
+// CORRECT - modal completely blocks the screen
+if m.state != StateDashboard {
+    overlayView = m.mergeView.View()
+
+    // Check modal FIRST, return ONLY modal (blocks everything)
+    if m.showingConfirmation {
+        return m.renderConfirmationDialog()
+    }
+
+    return overlayView
+}
+```
+
+**Bug:** Yes button callback not working
+
+**Cause:** State changes inside callback closure don't persist (Bubble Tea passes models by value):
+```go
+// WRONG - state change in callback gets lost
+m.confirmationCallback = func() tea.Cmd {
+    m.state = StateDashboard  // This modifies a copy!
+    return m.dashboard.Init()
+}
+```
+
+**Fix:** Change state in Update() method before calling callback:
+```go
+// CORRECT - state change in Update method
+case "enter":
+    m.showingConfirmation = false
+    selectedYes := m.confirmationSelectedBtn == 1
+    m.confirmationSelectedBtn = 0
+
+    if selectedYes && m.confirmationCallback != nil {
+        m.state = StateDashboard  // Change state HERE in Update
+        cmd := m.confirmationCallback()  // Callback only returns command
+        return m, cmd
+    }
 ```
 
 ## Important Constraints & Design Decisions
