@@ -394,21 +394,31 @@ func (e *ExecOperations) CheckoutBranch(ctx context.Context, repoPath, branchNam
 
 // Push pushes commits to the remote repository.
 func (e *ExecOperations) Push(ctx context.Context, repoPath, branch string, force bool) error {
+	if branch == "" {
+		var err error
+		branch, err = e.GetCurrentBranch(ctx, repoPath)
+		if err != nil {
+			return fmt.Errorf("failed to get current branch: %w", err)
+		}
+	}
+
 	args := []string{"push"}
+
+	// Check if upstream is configured
+	_, _, upstreamErr := e.execGit(ctx, repoPath, "rev-parse", "--abbrev-ref", branch+"@{upstream}")
+	if upstreamErr != nil {
+		// No upstream configured - set it with -u flag
+		args = append(args, "-u")
+	}
 
 	if force {
 		args = append(args, "--force")
 	}
 
-	if branch != "" {
-		args = append(args, "origin", branch)
-	}
+	args = append(args, "origin", branch)
 
 	_, stderr, err := e.execGit(ctx, repoPath, args...)
 	if err != nil {
-		if strings.Contains(stderr, "no upstream branch") {
-			return fmt.Errorf("no upstream branch configured. Use: git push -u origin %s", branch)
-		}
 		return fmt.Errorf("failed to push: %s: %w", stderr, err)
 	}
 
@@ -490,8 +500,29 @@ func (e *ExecOperations) GetRemoteSyncStatus(ctx context.Context, repoPath, bran
 	// Get the remote tracking branch
 	remoteBranch, _, err := e.execGit(ctx, repoPath, "rev-parse", "--abbrev-ref", branch+"@{upstream}")
 	if err != nil {
-		// No upstream branch configured
-		return 0, 0, nil
+		// No upstream branch configured - try to compare with origin/<branch>
+		remoteName, err := e.GetRemoteName(ctx, repoPath)
+		if err != nil {
+			// No remote at all
+			return 0, 0, nil
+		}
+
+		// Check if remote branch exists
+		remoteBranch = remoteName + "/" + branch
+		_, _, err = e.execGit(ctx, repoPath, "rev-parse", "--verify", remoteBranch)
+		if err != nil {
+			// Remote branch doesn't exist - count all local commits as "ahead"
+			stdout, _, err := e.execGit(ctx, repoPath, "rev-list", "--count", branch)
+			if err != nil {
+				return 0, 0, nil
+			}
+			_, err = fmt.Sscanf(stdout, "%d", &ahead)
+			if err != nil {
+				return 0, 0, nil
+			}
+			// If we have commits, we're ahead (need to push to create remote branch)
+			return ahead, 0, nil
+		}
 	}
 
 	// Get ahead/behind counts
