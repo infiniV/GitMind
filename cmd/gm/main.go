@@ -46,6 +46,7 @@ commit messages and help you make smart branching decisions.`,
 	rootCmd.AddCommand(commitCmd())
 	rootCmd.AddCommand(mergeCmd())
 	rootCmd.AddCommand(configCmd())
+	rootCmd.AddCommand(onboardCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
@@ -91,6 +92,26 @@ func configCmd() *cobra.Command {
 		Long:  `Interactive configuration wizard to set up API keys and preferences.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runConfig()
+		},
+	}
+
+	return cmd
+}
+
+func onboardCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "onboard",
+		Short: "Run the GitMind setup wizard",
+		Long: `Interactive onboarding wizard to set up GitMind for your workspace.
+This wizard will guide you through:
+  - Git repository initialization
+  - GitHub integration setup
+  - Branch preferences
+  - Commit conventions
+  - Branch naming patterns
+  - AI provider configuration`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runOnboard()
 		},
 	}
 
@@ -537,6 +558,29 @@ func runConfig() error {
 	ui.PrintInfo("You're all set! Try running 'gm commit' in a git repository")
 
 	return nil
+}
+
+func runOnboard() error {
+	ui.PrintInfo("Starting GitMind setup wizard...")
+	fmt.Println()
+
+	// Get current directory
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	// Load existing config
+	cfg, err := cfgManager.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Create git operations
+	gitOps := git.NewExecOperations()
+
+	// Run onboarding wizard
+	return ui.RunOnboarding(gitOps, cfg, cfgManager, cwd)
 }
 
 func min(a, b int) int {

@@ -25,6 +25,7 @@ const (
 	StateMergeAnalyzing
 	StateMergeView
 	StateMergeExecuting
+	StateOnboarding
 )
 
 // Tab constants
@@ -45,10 +46,11 @@ type AppModel struct {
 	currentTab Tab
 
 	// Child models
-	dashboard    *DashboardModel
-	commitView   *CommitViewModel
-	mergeView    *MergeViewModel
-	settingsView *SettingsView
+	dashboard      *DashboardModel
+	commitView     *CommitViewModel
+	mergeView      *MergeViewModel
+	settingsView   *SettingsView
+	onboardingView *OnboardingModel
 
 	// Dependencies
 	gitOps     git.Operations
@@ -93,6 +95,22 @@ func NewAppModel(gitOps git.Operations, aiProvider ai.Provider, cfg *domain.Conf
 	}
 }
 
+// NewAppModelWithOnboarding creates an AppModel that starts in onboarding mode
+func NewAppModelWithOnboarding(gitOps git.Operations, cfg *domain.Config, cfgManager *config.Manager, repoPath string) AppModel {
+	onboarding := NewOnboardingModel(cfg, cfgManager, gitOps, repoPath)
+
+	return AppModel{
+		state:          StateOnboarding,
+		currentTab:     TabDashboard,
+		onboardingView: &onboarding,
+		gitOps:         gitOps,
+		cfg:            cfg,
+		cfgManager:     cfgManager,
+		repoPath:       repoPath,
+		actionParams:   make(map[string]interface{}),
+	}
+}
+
 // Messages for async operations
 
 type commitAnalysisMsg struct {
@@ -117,7 +135,17 @@ type loadingTickMsg time.Time
 
 // Init initializes the application
 func (m AppModel) Init() tea.Cmd {
-	return m.dashboard.Init()
+	// If in onboarding state, init onboarding
+	if m.state == StateOnboarding && m.onboardingView != nil {
+		return m.onboardingView.Init()
+	}
+
+	// Otherwise init dashboard
+	if m.dashboard != nil {
+		return m.dashboard.Init()
+	}
+
+	return nil
 }
 
 // Update handles messages and updates the application state
@@ -365,6 +393,41 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		return m, cmd
 
+	case StateOnboarding:
+		if m.onboardingView == nil {
+			return m, nil
+		}
+
+		updated, cmd := m.onboardingView.Update(msg)
+		m.onboardingView = &updated
+
+		// Check if onboarding is complete
+		if m.onboardingView.IsCompleted() {
+			// Reload config after onboarding
+			cfg, err := m.cfgManager.Load()
+			if err == nil {
+				m.cfg = cfg
+			}
+
+			// Initialize dashboard
+			dashboard := NewDashboardModel(m.gitOps, m.repoPath)
+			m.dashboard = &dashboard
+
+			// Transition to dashboard
+			m.state = StateDashboard
+			PrintSuccess("Setup complete! Welcome to GitMind.")
+			return m, m.dashboard.Init()
+		}
+
+		// Check if onboarding was cancelled
+		if m.onboardingView.IsCancelled() {
+			// Exit application
+			PrintInfo("Setup cancelled. You can run 'gm onboard' to set up GitMind later.")
+			return m, tea.Quit
+		}
+
+		return m, cmd
+
 	case StateCommitView:
 		if m.commitView == nil {
 			return m, nil
@@ -432,6 +495,14 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // View renders the application
 func (m AppModel) View() string {
 	var content string
+
+	// Handle onboarding state (full screen, no tabs)
+	if m.state == StateOnboarding {
+		if m.onboardingView != nil {
+			return m.onboardingView.View()
+		}
+		return "Loading onboarding..."
+	}
 
 	// For non-dashboard states, render overlays directly without tabs
 	if m.state != StateDashboard {

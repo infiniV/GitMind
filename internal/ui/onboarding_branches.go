@@ -1,0 +1,251 @@
+package ui
+
+import (
+	"fmt"
+	"strings"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/yourusername/gitman/internal/domain"
+)
+
+// OnboardingBranchesScreen handles branch configuration
+type OnboardingBranchesScreen struct {
+	step       int
+	totalSteps int
+	config     *domain.Config
+
+	// Form fields
+	focusedField      int
+	mainBranch        TextInput
+	protectedBranches CheckboxGroup
+	customProtected   TextInput
+	autoPush          Checkbox
+	autoPull          Checkbox
+
+	shouldContinue bool
+	shouldGoBack   bool
+}
+
+// NewOnboardingBranchesScreen creates a new branches screen
+func NewOnboardingBranchesScreen(step, totalSteps int, config *domain.Config) OnboardingBranchesScreen {
+	// Default protected branches
+	defaultBranches := []string{"main", "master", "develop", "production"}
+	checked := make([]bool, len(defaultBranches))
+
+	// Check which ones are currently protected
+	for i, branch := range defaultBranches {
+		for _, protected := range config.Git.ProtectedBranches {
+			if branch == protected {
+				checked[i] = true
+				break
+			}
+		}
+	}
+
+	screen := OnboardingBranchesScreen{
+		step:       step,
+		totalSteps: totalSteps,
+		config:     config,
+
+		mainBranch:        NewTextInput("Main Branch", "main"),
+		protectedBranches: NewCheckboxGroup("Protected Branches", defaultBranches, checked),
+		customProtected:   NewTextInput("Add Custom Branch", ""),
+		autoPush:          NewCheckbox("Auto-push after commit", config.Git.AutoPush),
+		autoPull:          NewCheckbox("Auto-pull before operations", config.Git.AutoPull),
+
+		focusedField: 0,
+	}
+
+	// Set current main branch
+	if config.Git.MainBranch != "" {
+		screen.mainBranch.Value = config.Git.MainBranch
+	} else {
+		screen.mainBranch.Value = "main"
+	}
+
+	return screen
+}
+
+// Init initializes the screen
+func (m OnboardingBranchesScreen) Init() tea.Cmd {
+	return nil
+}
+
+// Update handles messages
+func (m OnboardingBranchesScreen) Update(msg tea.Msg) (OnboardingBranchesScreen, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "enter":
+			if m.focusedField == 4 {
+				// Save and continue
+				m.saveToConfig()
+				m.shouldContinue = true
+				return m, nil
+			} else if m.focusedField == 1 {
+				// Toggle focused checkbox in group
+				m.protectedBranches.Toggle()
+				return m, nil
+			} else if m.focusedField == 2 {
+				// Add custom protected branch
+				if m.customProtected.Value != "" {
+					// Add to protected branches list
+					m.protectedBranches.Items = append(m.protectedBranches.Items,
+						NewCheckbox(m.customProtected.Value, true))
+					m.customProtected.Value = ""
+				}
+				return m, nil
+			} else if m.focusedField == 3 {
+				// Toggle auto-push/pull checkboxes handled below
+			}
+			return m, nil
+
+		case "tab", "down":
+			m.focusedField = (m.focusedField + 1) % 5
+			return m, nil
+
+		case "shift+tab", "up":
+			m.focusedField = (m.focusedField - 1 + 5) % 5
+			return m, nil
+
+		case "left":
+			if m.focusedField == 0 {
+				m.shouldGoBack = true
+				return m, nil
+			} else if m.focusedField == 1 {
+				m.protectedBranches.Previous()
+				return m, nil
+			}
+			return m, nil
+
+		case "right":
+			if m.focusedField == 1 {
+				m.protectedBranches.Next()
+				return m, nil
+			}
+			return m, nil
+
+		case "space":
+			if m.focusedField == 1 {
+				m.protectedBranches.Toggle()
+			} else if m.focusedField == 3 {
+				// Toggle auto-push
+				m.autoPush.Toggle()
+			}
+			return m, nil
+
+		case "p", "P":
+			// Quick toggle auto-pull
+			m.autoPull.Toggle()
+			return m, nil
+
+		default:
+			// Handle text input
+			if m.focusedField == 0 {
+				m.mainBranch.Update(msg)
+			} else if m.focusedField == 2 {
+				m.customProtected.Update(msg)
+			}
+			return m, nil
+		}
+	}
+
+	return m, nil
+}
+
+// saveToConfig saves the configuration
+func (m *OnboardingBranchesScreen) saveToConfig() {
+	// Main branch
+	m.config.Git.MainBranch = m.mainBranch.Value
+
+	// Protected branches
+	m.config.Git.ProtectedBranches = m.protectedBranches.GetChecked()
+
+	// Auto push/pull
+	m.config.Git.AutoPush = m.autoPush.Checked
+	m.config.Git.AutoPull = m.autoPull.Checked
+}
+
+// View renders the branches screen
+func (m OnboardingBranchesScreen) View() string {
+	var sections []string
+
+	// Header
+	header := headerStyle.Render("Branch Configuration")
+	sections = append(sections, header)
+
+	// Progress
+	progress := fmt.Sprintf("Step %d of %d", m.step, m.totalSteps)
+	sections = append(sections, metadataStyle.Render(progress))
+
+	sections = append(sections, "")
+
+	// Description
+	desc := lipgloss.NewStyle().Foreground(colorMuted).Render(
+		"Configure your branch preferences and protected branches.")
+	sections = append(sections, desc)
+
+	sections = append(sections, "")
+
+	// Main branch
+	m.mainBranch.Focused = (m.focusedField == 0)
+	sections = append(sections, m.mainBranch.View())
+	sections = append(sections, HelpText{Text: "The primary branch for your repository (e.g., main, master)"}.View())
+
+	sections = append(sections, "")
+
+	// Protected branches
+	sections = append(sections, m.protectedBranches.View())
+	sections = append(sections, HelpText{Text: "Branches that require extra confirmation before operations"}.View())
+
+	sections = append(sections, "")
+
+	// Custom protected branch
+	m.customProtected.Focused = (m.focusedField == 2)
+	sections = append(sections, m.customProtected.View())
+	sections = append(sections, HelpText{Text: "Press Enter to add a custom branch to protected list"}.View())
+
+	sections = append(sections, "")
+	sections = append(sections, renderSeparator(70))
+	sections = append(sections, "")
+
+	// Options
+	sections = append(sections, formLabelStyle.Render("Git Workflow Options:"))
+	m.autoPush.Focused = (m.focusedField == 3)
+	sections = append(sections, "  "+m.autoPush.View())
+	sections = append(sections, HelpText{Text: "Automatically push commits to remote after creating them"}.View())
+
+	sections = append(sections, "")
+	sections = append(sections, "  "+m.autoPull.View())
+	sections = append(sections, HelpText{Text: "Automatically pull latest changes before operations (Press P to toggle)"}.View())
+
+	sections = append(sections, "")
+
+	// Continue button
+	continueBtn := NewButton("Continue")
+	continueBtn.Focused = (m.focusedField == 4)
+	sections = append(sections, continueBtn.View())
+
+	sections = append(sections, "")
+	sections = append(sections, renderSeparator(70))
+
+	// Footer
+	footer := footerStyle.Render(
+		shortcutKeyStyle.Render("Tab/↑↓")+" "+shortcutDescStyle.Render("Navigate")+"  "+
+			shortcutKeyStyle.Render("Space")+" "+shortcutDescStyle.Render("Toggle")+"  "+
+			shortcutKeyStyle.Render("←")+" "+shortcutDescStyle.Render("Back"))
+	sections = append(sections, footer)
+
+	return strings.Join(sections, "\n")
+}
+
+// ShouldContinue returns true if user wants to continue
+func (m OnboardingBranchesScreen) ShouldContinue() bool {
+	return m.shouldContinue
+}
+
+// ShouldGoBack returns true if user wants to go back
+func (m OnboardingBranchesScreen) ShouldGoBack() bool {
+	return m.shouldGoBack
+}
