@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/yourusername/gitman/internal/adapter/ai"
 	"github.com/yourusername/gitman/internal/adapter/config"
 	"github.com/yourusername/gitman/internal/adapter/git"
@@ -26,21 +27,34 @@ const (
 	StateMergeExecuting
 )
 
+// Tab constants
+type Tab int
+
+const (
+	TabDashboard Tab = iota
+	TabSettings
+)
+
 // AppModel is the root model that manages the entire application lifecycle
 type AppModel struct {
 	// State management
 	state         AppState
 	previousState AppState
 
+	// Tab management
+	currentTab Tab
+
 	// Child models
-	dashboard  *DashboardModel
-	commitView *CommitViewModel
-	mergeView  *MergeViewModel
+	dashboard    *DashboardModel
+	commitView   *CommitViewModel
+	mergeView    *MergeViewModel
+	settingsView *SettingsView
 
 	// Dependencies
 	gitOps     git.Operations
 	aiProvider ai.Provider
-	cfg        *config.Config
+	cfg        *domain.Config
+	cfgManager *config.Manager
 	repoPath   string
 
 	// Loading state
@@ -63,15 +77,17 @@ type AppModel struct {
 }
 
 // NewAppModel creates a new root application model
-func NewAppModel(gitOps git.Operations, aiProvider ai.Provider, cfg *config.Config, repoPath string) AppModel {
+func NewAppModel(gitOps git.Operations, aiProvider ai.Provider, cfg *domain.Config, cfgManager *config.Manager, repoPath string) AppModel {
 	dashboard := NewDashboardModel(gitOps, repoPath)
 
 	return AppModel{
 		state:        StateDashboard,
+		currentTab:   TabDashboard,
 		dashboard:    &dashboard,
 		gitOps:       gitOps,
 		aiProvider:   aiProvider,
 		cfg:          cfg,
+		cfgManager:   cfgManager,
 		repoPath:     repoPath,
 		actionParams: make(map[string]interface{}),
 	}
@@ -124,8 +140,41 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// Handle quit in dashboard (q or esc when no submenu)
-		if m.state == StateDashboard && m.dashboard.activeSubmenu == NoSubmenu {
+		// Handle tab switching (only in dashboard state)
+		if m.state == StateDashboard {
+			switch msg.String() {
+			case "1":
+				m.currentTab = TabDashboard
+				return m, nil
+			case "2":
+				m.currentTab = TabSettings
+				// Lazy-init settings view
+				if m.settingsView == nil {
+					settings := NewSettingsView(m.cfg, m.cfgManager)
+					m.settingsView = settings
+				}
+				return m, nil
+			case "ctrl+tab":
+				m.currentTab = (m.currentTab + 1) % 2
+				// Lazy-init settings if needed
+				if m.currentTab == TabSettings && m.settingsView == nil {
+					settings := NewSettingsView(m.cfg, m.cfgManager)
+					m.settingsView = settings
+				}
+				return m, nil
+			case "ctrl+shift+tab":
+				m.currentTab = (m.currentTab - 1 + 2) % 2
+				// Lazy-init settings if needed
+				if m.currentTab == TabSettings && m.settingsView == nil {
+					settings := NewSettingsView(m.cfg, m.cfgManager)
+					m.settingsView = settings
+				}
+				return m, nil
+			}
+		}
+
+		// Handle quit in dashboard (q or esc when no submenu and on Dashboard tab)
+		if m.state == StateDashboard && m.currentTab == TabDashboard && m.dashboard.activeSubmenu == NoSubmenu {
 			if msg.String() == "q" || msg.String() == "esc" {
 				return m, tea.Quit
 			}
@@ -251,6 +300,15 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Route messages to appropriate child model based on state
 	switch m.state {
 	case StateDashboard:
+		// Route to active tab
+		if m.currentTab == TabSettings && m.settingsView != nil {
+			// Settings view handles its own messages
+			updated, cmd := m.settingsView.Update(msg)
+			m.settingsView = &updated
+			return m, cmd
+		}
+
+		// Dashboard tab
 		updated, cmd := m.dashboard.Update(msg)
 		dashModel := updated.(DashboardModel)
 		m.dashboard = &dashModel
@@ -373,41 +431,54 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // View renders the application
 func (m AppModel) View() string {
-	// Always render dashboard as base
-	baseView := m.dashboard.View()
+	var content string
 
-	// Render overlay based on state
-	var overlay string
+	// For non-dashboard states, render overlays directly without tabs
+	if m.state != StateDashboard {
+		// Render overlay based on state
+		switch m.state {
+		case StateCommitAnalyzing, StateCommitExecuting:
+			return m.renderLoadingOverlay()
 
-	switch m.state {
-	case StateCommitAnalyzing, StateCommitExecuting:
-		overlay = m.renderLoadingOverlay()
+		case StateCommitView:
+			if m.commitView != nil {
+				return m.commitView.View()
+			}
 
-	case StateCommitView:
-		if m.commitView != nil {
-			overlay = m.commitView.View()
-		}
+		case StateMergeAnalyzing, StateMergeExecuting:
+			return m.renderLoadingOverlay()
 
-	case StateMergeAnalyzing, StateMergeExecuting:
-		overlay = m.renderLoadingOverlay()
-
-	case StateMergeView:
-		if m.mergeView != nil {
-			overlay = m.mergeView.View()
+		case StateMergeView:
+			if m.mergeView != nil {
+				return m.mergeView.View()
+			}
 		}
 	}
+
+	// Render tab bar
+	tabBar := m.renderTabBar()
+
+	// Render active tab content
+	switch m.currentTab {
+	case TabDashboard:
+		content = m.dashboard.View()
+	case TabSettings:
+		if m.settingsView != nil {
+			content = m.settingsView.View()
+		} else {
+			content = "Loading settings..."
+		}
+	}
+
+	// Combine tab bar and content
+	view := tabBar + "\n" + content
 
 	// Show confirmation dialog if active
 	if m.showingConfirmation {
-		return baseView + "\n\n" + m.renderConfirmationDialog()
+		return view + "\n\n" + m.renderConfirmationDialog()
 	}
 
-	// If there's an overlay, render it on top of dashboard
-	if overlay != "" {
-		return overlay
-	}
-
-	return baseView
+	return view
 }
 
 // renderLoadingOverlay renders a loading message overlay
@@ -435,6 +506,31 @@ func (m AppModel) renderConfirmationDialog() string {
 	return commitBoxStyle.Render(content)
 }
 
+// renderTabBar renders the tab bar at the top
+func (m AppModel) renderTabBar() string {
+	var tabs []string
+
+	// Dashboard tab
+	if m.currentTab == TabDashboard {
+		tabs = append(tabs, tabActiveStyle.Render("[1] Dashboard"))
+	} else {
+		tabs = append(tabs, tabInactiveStyle.Render("[1] Dashboard"))
+	}
+
+	// Spacer
+	tabs = append(tabs, "  ")
+
+	// Settings tab
+	if m.currentTab == TabSettings {
+		tabs = append(tabs, tabActiveStyle.Render("[2] Settings"))
+	} else {
+		tabs = append(tabs, tabInactiveStyle.Render("[2] Settings"))
+	}
+
+	tabLine := lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
+	return tabBarStyle.Render(tabLine)
+}
+
 // startCommitAnalysis initiates the commit analysis workflow
 func (m AppModel) startCommitAnalysis(params map[string]interface{}) tea.Cmd {
 	return func() tea.Msg {
@@ -448,11 +544,11 @@ func (m AppModel) startCommitAnalysis(params map[string]interface{}) tea.Cmd {
 		analyzeUC := usecase.NewAnalyzeCommitUseCase(m.gitOps, m.aiProvider)
 
 		// Create API key
-		apiKey, err := domain.NewAPIKey(m.cfg.APIKey, "cerebras")
+		apiKey, err := domain.NewAPIKey(m.cfg.AI.APIKey, m.cfg.AI.Provider)
 		if err != nil {
 			return commitAnalysisMsg{result: nil, err: err}
 		}
-		tier, err := domain.ParseAPITier(m.cfg.APITier)
+		tier, err := domain.ParseAPITier(m.cfg.AI.APITier)
 		if err != nil {
 			tier = domain.TierUnknown
 		}
@@ -461,7 +557,7 @@ func (m AppModel) startCommitAnalysis(params map[string]interface{}) tea.Cmd {
 		// Build request
 		req := usecase.AnalyzeCommitRequest{
 			RepoPath:               m.repoPath,
-			ProtectedBranches:      m.cfg.ProtectedBranches,
+			ProtectedBranches:      m.cfg.Git.ProtectedBranches,
 			UseConventionalCommits: useConventional,
 			UserPrompt:             customMessage,
 			APIKey:                 apiKey,
@@ -487,11 +583,11 @@ func (m AppModel) startMergeAnalysis(params map[string]interface{}) tea.Cmd {
 		analyzeUC := usecase.NewAnalyzeMergeUseCase(m.gitOps, m.aiProvider)
 
 		// Create API key
-		apiKey, err := domain.NewAPIKey(m.cfg.APIKey, "cerebras")
+		apiKey, err := domain.NewAPIKey(m.cfg.AI.APIKey, m.cfg.AI.Provider)
 		if err != nil {
 			return mergeAnalysisMsg{result: nil, err: err}
 		}
-		tier, err := domain.ParseAPITier(m.cfg.APITier)
+		tier, err := domain.ParseAPITier(m.cfg.AI.APITier)
 		if err != nil {
 			tier = domain.TierUnknown
 		}
@@ -502,7 +598,7 @@ func (m AppModel) startMergeAnalysis(params map[string]interface{}) tea.Cmd {
 			RepoPath:          m.repoPath,
 			SourceBranch:      sourceBranch,
 			TargetBranch:      targetBranch,
-			ProtectedBranches: m.cfg.ProtectedBranches,
+			ProtectedBranches: m.cfg.Git.ProtectedBranches,
 			APIKey:            apiKey,
 		}
 

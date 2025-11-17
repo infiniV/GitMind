@@ -234,6 +234,56 @@ var (
 	loadingStyle = lipgloss.NewStyle().
 				Foreground(colorPrimary).
 				Bold(true)
+
+	// Tab styles
+	tabActiveStyle = lipgloss.NewStyle().
+				Foreground(colorPrimary).
+				Bold(true).
+				Underline(true)
+
+	tabInactiveStyle = lipgloss.NewStyle().
+				Foreground(colorMuted)
+
+	tabBarStyle = lipgloss.NewStyle().
+				BorderBottom(true).
+				BorderStyle(lipgloss.NormalBorder()).
+				BorderForeground(colorBorder).
+				MarginBottom(1).
+				PaddingLeft(1)
+
+	// Form component styles
+	formLabelStyle = lipgloss.NewStyle().
+				Foreground(colorText).
+				Bold(true).
+				Width(20)
+
+	formInputStyle = lipgloss.NewStyle().
+				Foreground(colorText).
+				Background(lipgloss.Color("#2F2A1F")).
+				Padding(0, 1)
+
+	formInputFocusedStyle = lipgloss.NewStyle().
+				Foreground(colorText).
+				Background(lipgloss.Color("#3A2F1F")).
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(colorPrimary).
+				Padding(0, 1)
+
+	formHelpStyle = lipgloss.NewStyle().
+				Foreground(colorMuted).
+				Italic(true).
+				PaddingLeft(2)
+
+	formButtonStyle = lipgloss.NewStyle().
+				Foreground(colorText).
+				Background(colorPrimary).
+				Padding(0, 2).
+				Bold(true)
+
+	formButtonInactiveStyle = lipgloss.NewStyle().
+				Foreground(colorMuted).
+				Background(lipgloss.Color("#2F2A1F")).
+				Padding(0, 2)
 )
 
 // Helper functions for confidence levels
