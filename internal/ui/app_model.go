@@ -203,11 +203,15 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case "enter":
 				m.showingConfirmation = false
-				if m.confirmationSelectedBtn == 1 && m.confirmationCallback != nil {
-					m.confirmationSelectedBtn = 0 // Reset for next time
-					return m, m.confirmationCallback()
-				}
+				selectedYes := m.confirmationSelectedBtn == 1
 				m.confirmationSelectedBtn = 0 // Reset for next time
+
+				if selectedYes && m.confirmationCallback != nil {
+					// Execute callback and return to dashboard
+					m.state = StateDashboard
+					cmd := m.confirmationCallback()
+					return m, cmd
+				}
 				return m, nil
 			case "esc":
 				// ESC always means No
@@ -267,7 +271,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.confirmationSelectedBtn = 0 // Default to No
 				m.confirmationMessage = "Cancel commit analysis?"
 				m.confirmationCallback = func() tea.Cmd {
-					m.state = StateDashboard
 					return m.dashboard.Init()
 				}
 				return m, nil
@@ -278,7 +281,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.confirmationSelectedBtn = 0 // Default to No
 				m.confirmationMessage = "Return to dashboard without committing?"
 				m.confirmationCallback = func() tea.Cmd {
-					m.state = StateDashboard
 					return m.dashboard.Init()
 				}
 				return m, nil
@@ -288,7 +290,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.confirmationSelectedBtn = 0 // Default to No
 				m.confirmationMessage = "Cancel merge analysis?"
 				m.confirmationCallback = func() tea.Cmd {
-					m.state = StateDashboard
 					return m.dashboard.Init()
 				}
 				return m, nil
@@ -298,7 +299,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.confirmationSelectedBtn = 0 // Default to No
 				m.confirmationMessage = "Return to dashboard without merging?"
 				m.confirmationCallback = func() tea.Cmd {
-					m.state = StateDashboard
 					return m.dashboard.Init()
 				}
 				return m, nil
@@ -676,12 +676,27 @@ func (m AppModel) View() string {
 			}
 		}
 
-		// Show confirmation dialog if active (must render on top of overlay)
+		// Show confirmation dialog if active (completely blocks screen)
 		if m.showingConfirmation {
-			return overlayView + "\n\n" + m.renderConfirmationDialog()
+			return m.renderConfirmationDialog()
+		}
+
+		// Show error modal if active (completely blocks screen)
+		if m.showingError {
+			return m.renderErrorModal()
 		}
 
 		return overlayView
+	}
+
+	// Show confirmation dialog if active (highest priority - blocks dashboard)
+	if m.showingConfirmation {
+		return m.renderConfirmationDialog()
+	}
+
+	// Show error modal if active (blocks dashboard)
+	if m.showingError {
+		return m.renderErrorModal()
 	}
 
 	// Render tab bar
@@ -701,16 +716,6 @@ func (m AppModel) View() string {
 
 	// Combine tab bar and content
 	view := tabBar + "\n" + content
-
-	// Show error modal if active (highest priority)
-	if m.showingError {
-		return view + "\n\n" + m.renderErrorModal()
-	}
-
-	// Show confirmation dialog if active
-	if m.showingConfirmation {
-		return view + "\n\n" + m.renderConfirmationDialog()
-	}
 
 	return view
 }

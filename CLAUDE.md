@@ -577,15 +577,25 @@ confirmationSelectedBtn int // 0 = No (default), 1 = Yes
 
 **Critical rendering pattern:**
 ```go
-// app_model.go - renders as centered full-screen modal
-return "\n\n" + lipgloss.Place(
-    80, 20,
-    lipgloss.Center, lipgloss.Center,
-    modalStyle.Render(content),
-)
+// app_model.go:680-681 - returns ONLY the modal, blocking everything else
+if m.showingConfirmation {
+    return m.renderConfirmationDialog()
+}
 ```
 
-The modal is rendered with `lipgloss.Place()` to center it on screen, creating a blocking overlay effect that replaces the current view visually.
+The modal completely replaces the current view - it does NOT overlay on top. The `View()` function checks for `showingConfirmation` FIRST and returns only the modal, ensuring the entire screen is blocked.
+
+**Callback execution:**
+```go
+// app_model.go:209-213 - state change happens in Update, not in callback
+if selectedYes && m.confirmationCallback != nil {
+    m.state = StateDashboard  // State change here, not in callback
+    cmd := m.confirmationCallback()
+    return m, cmd
+}
+```
+
+State changes must happen in the `Update` method, not inside the callback closure, because Bubble Tea passes models by value.
 
 **Single-layer key handling:**
 - AppModel exclusively handles ESC key and shows confirmation dialog
