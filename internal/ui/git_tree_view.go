@@ -340,7 +340,7 @@ func (m *GitTreeViewModel) renderCommitLine(commit domain.CommitNode, styles *Th
 
 	// Time ago
 	timeAgo := formatTimeAgo(commit.Date)
-	timePart := styles.ColorMuted.Render(fmt.Sprintf("(%s)", timeAgo))
+	timePart := lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(fmt.Sprintf("(%s)", timeAgo))
 
 	// Message (truncate if too long)
 	message := commit.Message
@@ -351,7 +351,7 @@ func (m *GitTreeViewModel) renderCommitLine(commit domain.CommitNode, styles *Th
 	msgPart := message
 
 	// Author (abbreviated)
-	authorPart := styles.ColorMuted.Render(fmt.Sprintf("<%s>", truncateAuthor(commit.Author)))
+	authorPart := lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(fmt.Sprintf("<%s>", truncateAuthor(commit.Author)))
 
 	// Highlight based on mode
 	shouldHighlight := m.shouldHighlightCommit(commit)

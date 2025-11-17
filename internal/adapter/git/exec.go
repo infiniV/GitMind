@@ -8,7 +8,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/yourusername/gitman/internal/domain"
 )
@@ -980,4 +982,324 @@ func ParseGitHubRepo(remoteURL string) (*GitHubRepo, error) {
 		Owner: pathParts[0],
 		Repo:  pathParts[1],
 	}, nil
+}
+
+// GetCommitGraph returns the full commit graph with ASCII visualization.
+func (e *ExecOperations) GetCommitGraph(ctx context.Context, repoPath string, limit int) (*domain.CommitGraph, error) {
+	// Format: hash|shortHash|author|date|message|parents|refNames
+	format := "%H|%h|%an|%at|%s|%P|%D"
+
+	args := []string{"log", "--all", "--graph", "--date-order", fmt.Sprintf("--format=%s", format)}
+	if limit > 0 {
+		args = append(args, fmt.Sprintf("-%d", limit))
+	}
+
+	stdout, stderr, err := e.execGit(ctx, repoPath, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get commit graph: %s: %w", stderr, err)
+	}
+
+	// Parse the output
+	graph := &domain.CommitGraph{
+		Commits:   make([]domain.CommitNode, 0),
+		Branches:  make([]domain.BranchNode, 0),
+		BranchMap: make(map[string]*domain.BranchNode),
+		CommitMap: make(map[string]*domain.CommitNode),
+	}
+
+	lines := strings.Split(stdout, "\n")
+
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+
+		// Extract graph visualization and commit data
+		graphPart, commitData := parseGraphLine(line)
+		if commitData == "" {
+			continue
+		}
+
+		// Parse commit fields
+		fields := strings.Split(commitData, "|")
+		if len(fields) < 7 {
+			continue
+		}
+
+		hash := fields[0]
+		shortHash := fields[1]
+		author := fields[2]
+		timestamp := fields[3]
+		message := fields[4]
+		parentsStr := fields[5]
+		refNames := fields[6]
+
+		// Parse date
+		var commitDate time.Time
+		if ts, err := strconv.ParseInt(timestamp, 10, 64); err == nil {
+			commitDate = time.Unix(ts, 0)
+		}
+
+		// Parse parents
+		parents := []string{}
+		if parentsStr != "" {
+			parents = strings.Fields(parentsStr)
+		}
+
+		// Parse branch and tags from ref names
+		branch := ""
+		tags := []string{}
+		isHead := false
+		if refNames != "" {
+			refs := strings.Split(refNames, ", ")
+			for _, ref := range refs {
+				ref = strings.TrimSpace(ref)
+				if strings.HasPrefix(ref, "HEAD -> ") {
+					isHead = true
+					branch = strings.TrimPrefix(ref, "HEAD -> ")
+				} else if strings.HasPrefix(ref, "tag: ") {
+					tags = append(tags, strings.TrimPrefix(ref, "tag: "))
+				} else if !strings.Contains(ref, "/") {
+					// Local branch
+					branch = ref
+				}
+			}
+		}
+
+		commit := domain.CommitNode{
+			Hash:        hash,
+			ShortHash:   shortHash,
+			Author:      author,
+			Date:        commitDate,
+			Message:     message,
+			FullMessage: message, // Could fetch full message separately if needed
+			Branch:      branch,
+			Parents:     parents,
+			Children:    []string{}, // Will be populated in second pass
+			GraphLine:   graphPart,
+			IsMerge:     len(parents) > 1,
+			IsHead:      isHead,
+			Tags:        tags,
+		}
+
+		graph.Commits = append(graph.Commits, commit)
+		graph.CommitMap[hash] = &graph.Commits[len(graph.Commits)-1]
+	}
+
+	// Second pass: populate children relationships
+	for i := range graph.Commits {
+		commit := &graph.Commits[i]
+		for _, parentHash := range commit.Parents {
+			if parent, exists := graph.CommitMap[parentHash]; exists {
+				parent.Children = append(parent.Children, commit.Hash)
+			}
+		}
+	}
+
+	// Get branch tree
+	branches, err := e.GetBranchTree(ctx, repoPath, []string{"main", "master", "develop"})
+	if err == nil {
+		graph.Branches = branches
+		for i := range branches {
+			graph.BranchMap[branches[i].Name] = &graph.Branches[i]
+		}
+	}
+
+	return graph, nil
+}
+
+// parseGraphLine extracts the ASCII graph part and commit data from a git log --graph line.
+func parseGraphLine(line string) (graph string, commitData string) {
+	// Find the first occurrence of a hash (40 hex chars after graph symbols)
+	// Graph symbols: *, |, /, \, space
+	for i, ch := range line {
+		if ch != '*' && ch != '|' && ch != '/' && ch != '\\' && ch != ' ' && ch != '_' && ch != '-' {
+			// Found start of commit data
+			graph = line[:i]
+			commitData = strings.TrimSpace(line[i:])
+			return
+		}
+	}
+	return line, ""
+}
+
+// GetBranchTree returns all branches with their parent-child relationships.
+func (e *ExecOperations) GetBranchTree(ctx context.Context, repoPath string, protectedBranches []string) ([]domain.BranchNode, error) {
+	// Get all local branches
+	stdout, stderr, err := e.execGit(ctx, repoPath, "branch", "--format=%(refname:short)|%(upstream:short)|%(HEAD)")
+	if err != nil {
+		return nil, fmt.Errorf("failed to list branches: %s: %w", stderr, err)
+	}
+
+	currentBranch, _ := e.GetCurrentBranch(ctx, repoPath)
+	branches := make([]domain.BranchNode, 0)
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+
+		fields := strings.Split(line, "|")
+		if len(fields) < 3 {
+			continue
+		}
+
+		branchName := strings.TrimSpace(fields[0])
+		_ = strings.TrimSpace(fields[1]) // upstream (not used yet)
+		isCurrentMarker := strings.TrimSpace(fields[2])
+
+		// Get branch info
+		branchInfo, err := e.GetBranchInfo(ctx, repoPath, protectedBranches)
+		isCurrent := isCurrentMarker == "*" || branchName == currentBranch
+
+		// Get parent branch from git config
+		parent, _ := e.GetParentBranch(ctx, repoPath, branchName)
+
+		// Get branch head commit
+		headHash, _, _ := e.execGit(ctx, repoPath, "rev-parse", branchName)
+		headHash = strings.TrimSpace(headHash)
+
+		// Get last commit date
+		lastCommitDateStr, _, _ := e.execGit(ctx, repoPath, "log", "-1", "--format=%at", branchName)
+		var lastCommitDate time.Time
+		if ts, err := strconv.ParseInt(strings.TrimSpace(lastCommitDateStr), 10, 64); err == nil {
+			lastCommitDate = time.Unix(ts, 0)
+		}
+
+		// Determine branch type
+		branchType := domain.DetectBranchType(branchName, protectedBranches)
+
+		// Get commits unique to this branch (if has parent)
+		commits := []string{}
+		aheadCount := 0
+		behindCount := 0
+		status := domain.BranchStatusUnknown
+
+		if parent != "" {
+			// Get commits ahead
+			branchCommits, err := e.GetBranchCommits(ctx, repoPath, branchName, parent)
+			if err == nil {
+				aheadCount = len(branchCommits)
+				for _, c := range branchCommits {
+					commits = append(commits, c.Hash)
+				}
+			}
+
+			// Get commits behind
+			parentCommits, err := e.GetBranchCommits(ctx, repoPath, parent, branchName)
+			if err == nil {
+				behindCount = len(parentCommits)
+			}
+
+			// Determine status
+			if aheadCount == 0 && behindCount == 0 {
+				status = domain.BranchStatusUpToDate
+			} else if aheadCount > 0 && behindCount == 0 {
+				status = domain.BranchStatusAhead
+			} else if aheadCount == 0 && behindCount > 0 {
+				status = domain.BranchStatusBehind
+			} else {
+				status = domain.BranchStatusDiverged
+			}
+
+			// Check for conflicts
+			canMerge, _, _ := e.CanMerge(ctx, repoPath, branchName, parent)
+			if !canMerge {
+				status = domain.BranchStatusConflict
+			}
+		}
+
+		// Check if protected
+		isProtected := false
+		for _, pb := range protectedBranches {
+			if pb == branchName {
+				isProtected = true
+				break
+			}
+		}
+
+		branch := domain.BranchNode{
+			Name:           branchName,
+			FullName:       "refs/heads/" + branchName,
+			Parent:         parent,
+			Type:           branchType,
+			Head:           headHash,
+			Commits:        commits,
+			Status:         status,
+			AheadCount:     aheadCount,
+			BehindCount:    behindCount,
+			IsProtected:    isProtected,
+			IsCurrent:      isCurrent,
+			IsRemote:       false,
+			LastCommitDate: lastCommitDate,
+		}
+
+		// Update from branchInfo if this is the current branch
+		if isCurrent && branchInfo != nil && err == nil {
+			branch.Parent = branchInfo.Parent()
+			branch.Type = branchInfo.Type()
+			branch.Commits = make([]string, branchInfo.CommitCount())
+		}
+
+		branches = append(branches, branch)
+	}
+
+	return branches, nil
+}
+
+// GetMergeStatus returns detailed merge status between source and target branches.
+func (e *ExecOperations) GetMergeStatus(ctx context.Context, repoPath, sourceBranch, targetBranch string) (*domain.MergeStatus, error) {
+	if sourceBranch == "" || targetBranch == "" {
+		return nil, errors.New("source and target branches cannot be empty")
+	}
+
+	status := &domain.MergeStatus{
+		SourceBranch: sourceBranch,
+		TargetBranch: targetBranch,
+		Status:       domain.BranchStatusUnknown,
+		Conflicts:    []string{},
+	}
+
+	// Get merge base (common ancestor)
+	mergeBase, err := e.GetMergeBase(ctx, repoPath, sourceBranch, targetBranch)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get merge base: %w", err)
+	}
+	status.CommonAncestor = mergeBase
+
+	// Get divergence
+	ahead, behind, err := e.GetDivergence(ctx, repoPath, sourceBranch, targetBranch)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get divergence: %w", err)
+	}
+	status.AheadCount = ahead
+	status.BehindCount = behind
+
+	// Determine status
+	if ahead == 0 && behind == 0 {
+		status.Status = domain.BranchStatusUpToDate
+		status.CanFastForward = true
+	} else if ahead > 0 && behind == 0 {
+		status.Status = domain.BranchStatusAhead
+		status.CanFastForward = true
+	} else if ahead == 0 && behind > 0 {
+		status.Status = domain.BranchStatusBehind
+	} else {
+		status.Status = domain.BranchStatusDiverged
+	}
+
+	// Check for conflicts
+	canMerge, conflicts, err := e.CanMerge(ctx, repoPath, sourceBranch, targetBranch)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check merge conflicts: %w", err)
+	}
+
+	if !canMerge {
+		status.Status = domain.BranchStatusConflict
+		status.Conflicts = conflicts
+		status.CanFastForward = false
+	}
+
+	return status, nil
 }

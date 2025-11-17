@@ -87,6 +87,9 @@ type repoStatusMsg struct {
 
 type branchesMsg []string
 type commitsMsg []git.CommitInfo
+type commitGraphMsg struct {
+	graph *domain.CommitGraph
+}
 type errorMsg struct{ err error }
 
 // NewDashboardModel creates a new dashboard model
@@ -107,6 +110,7 @@ func (m DashboardModel) Init() tea.Cmd {
 		fetchRepoStatus(m.gitOps, m.repoPath),
 		fetchBranches(m.gitOps, m.repoPath),
 		fetchRecentCommits(m.gitOps, m.repoPath),
+		fetchCommitGraph(m.gitOps, m.repoPath),
 	)
 }
 
@@ -126,6 +130,20 @@ func (m DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case commitsMsg:
 		m.recentCommits = msg
+		m.checkLoading()
+		return m, nil
+
+	case commitGraphMsg:
+		m.commitGraph = msg.graph
+		// Initialize git tree view if not already done
+		if m.gitTreeView == nil {
+			layout := CalculateLayout(m.width, m.height)
+			treeView := NewGitTreeViewModel(layout.RightPaneWidth, layout.GetAvailableTreeHeight())
+			m.gitTreeView = &treeView
+		}
+		if m.gitTreeView != nil {
+			m.gitTreeView.SetCommitGraph(msg.graph)
+		}
 		m.checkLoading()
 		return m, nil
 
@@ -188,6 +206,7 @@ func (m DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				fetchRepoStatus(m.gitOps, m.repoPath),
 				fetchBranches(m.gitOps, m.repoPath),
 				fetchRecentCommits(m.gitOps, m.repoPath),
+				fetchCommitGraph(m.gitOps, m.repoPath),
 			)
 
 		case "enter":
@@ -1268,5 +1287,20 @@ func fetchRecentCommits(gitOps git.Operations, repoPath string) tea.Cmd {
 		}
 
 		return commitsMsg(commits)
+	}
+}
+
+func fetchCommitGraph(gitOps git.Operations, repoPath string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		// Fetch up to 100 commits for the graph
+		graph, err := gitOps.GetCommitGraph(ctx, repoPath, 100)
+		if err != nil {
+			return errorMsg{err}
+		}
+
+		return commitGraphMsg{graph: graph}
 	}
 }
