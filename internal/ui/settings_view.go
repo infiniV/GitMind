@@ -238,13 +238,34 @@ func (m SettingsView) Update(msg tea.Msg) (SettingsView, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "1", "2", "3", "4", "5":
-			// Switch nested tabs
-			tabNum := int(msg.String()[0] - '1')
-			if tabNum >= 0 && tabNum < 5 {
-				m.currentTab = SettingsTab(tabNum)
-				m.focusedField = 0
-			}
+		case "g", "G":
+			// Switch to Git tab
+			m.currentTab = SettingsGit
+			m.focusedField = 0
+			return m, nil
+
+		case "h", "H":
+			// Switch to GitHub tab
+			m.currentTab = SettingsGitHub
+			m.focusedField = 0
+			return m, nil
+
+		case "c", "C":
+			// Switch to Commits tab
+			m.currentTab = SettingsCommits
+			m.focusedField = 0
+			return m, nil
+
+		case "n", "N":
+			// Switch to Naming tab
+			m.currentTab = SettingsNaming
+			m.focusedField = 0
+			return m, nil
+
+		case "a", "A":
+			// Switch to AI tab
+			m.currentTab = SettingsAI
+			m.focusedField = 0
 			return m, nil
 
 		case "s", "S":
@@ -624,7 +645,7 @@ func (m SettingsView) View() string {
 
 	// Footer
 	footer := footerStyle.Render(
-		shortcutKeyStyle.Render("1-5") + " " + shortcutDescStyle.Render("Switch Tab") + "  " +
+		shortcutKeyStyle.Render("G/H/C/N/A") + " " + shortcutDescStyle.Render("Switch Tab") + "  " +
 			shortcutKeyStyle.Render("Tab/↑↓") + " " + shortcutDescStyle.Render("Navigate") + "  " +
 			shortcutKeyStyle.Render("S") + " " + shortcutDescStyle.Render("Save"))
 	sections = append(sections, footer)
@@ -634,7 +655,16 @@ func (m SettingsView) View() string {
 
 // renderNestedTabBar renders the nested tab navigation
 func (m SettingsView) renderNestedTabBar() string {
-	tabs := []string{"Git", "GitHub", "Commits", "Naming", "AI"}
+	tabs := []struct {
+		name string
+		key  string
+	}{
+		{"Git", "G"},
+		{"GitHub", "H"},
+		{"Commits", "C"},
+		{"Naming", "N"},
+		{"AI", "A"},
+	}
 	var tabViews []string
 
 	for i, tab := range tabs {
@@ -644,7 +674,7 @@ func (m SettingsView) renderNestedTabBar() string {
 		} else {
 			style = tabInactiveStyle
 		}
-		tabViews = append(tabViews, style.Render(fmt.Sprintf(" %d:%s ", i+1, tab)))
+		tabViews = append(tabViews, style.Render(fmt.Sprintf(" [%s] %s ", tab.key, tab.name)))
 	}
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, tabViews...)

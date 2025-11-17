@@ -137,6 +137,38 @@ Dashboard (refresh)
 - `q`/`esc` quit from dashboard when no submenu active
 - `esc` in views shows confirmation dialog before returning to dashboard
 
+### Main Tab Navigation
+
+GitMind has two main tabs:
+- **Dashboard** (key: `1`) - Main repository interface with 6-card grid
+- **Settings** (key: `2`) - Configuration interface with nested subtabs
+
+**Tab switching:**
+- Press `1` to switch to Dashboard tab
+- Press `2` to switch to Settings tab
+- Press `Ctrl+Tab` to cycle forward through tabs
+- Press `Ctrl+Shift+Tab` to cycle backward through tabs
+
+### Settings Tab
+
+The Settings tab provides configuration for Git, GitHub, Commits, Naming, and AI settings.
+
+**Settings subtab navigation:**
+- Press `G` for Git settings
+- Press `H` for GitHub settings
+- Press `C` for Commits settings
+- Press `N` for Naming settings
+- Press `A` for AI settings
+- Press `S` to save changes
+
+**Important:** Settings subtabs use letter keys (G/H/C/N/A) instead of numbers to avoid conflict with main tab switching (1/2). This allows intuitive navigation without modifier keys.
+
+**Within settings forms:**
+- `Tab` / `↓` - Navigate to next field
+- `Shift+Tab` / `↑` - Navigate to previous field
+- `Enter` / `Space` - Toggle checkboxes, open dropdowns
+- `←` / `→` - Navigate within radio groups and checkbox groups
+
 ### Dashboard Design
 
 The dashboard uses a **6-card grid layout** (3 columns × 2 rows):
