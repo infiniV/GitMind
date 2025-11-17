@@ -132,25 +132,54 @@ func (m OnboardingNamingScreen) Update(msg tea.Msg) (OnboardingNamingScreen, tea
 			}
 			return m, nil
 
-		case "space":
+		case " ": // Space character
 			switch m.focusedField {
 			case 0:
-				m.enforce.Toggle()
+				m.enforce.Checked = !m.enforce.Checked
 				m.updatePreview()
 			case 2:
-				m.allowedPrefixes.Toggle()
+				if m.allowedPrefixes.FocusedIdx >= 0 && m.allowedPrefixes.FocusedIdx < len(m.allowedPrefixes.Items) {
+					m.allowedPrefixes.Items[m.allowedPrefixes.FocusedIdx].Checked = !m.allowedPrefixes.Items[m.allowedPrefixes.FocusedIdx].Checked
+				}
 				m.updatePreview()
+			}
+			return m, nil
+
+		case "backspace", "delete":
+			// Handle text input deletion
+			switch m.focusedField {
+			case 1:
+				if len(m.pattern.Value) > 0 {
+					m.pattern.Value = m.pattern.Value[:len(m.pattern.Value)-1]
+				}
+				m.updatePreview()
+			case 3:
+				if len(m.customPrefix.Value) > 0 {
+					m.customPrefix.Value = m.customPrefix.Value[:len(m.customPrefix.Value)-1]
+				}
 			}
 			return m, nil
 
 		default:
 			// Handle text input
 			switch m.focusedField {
-			case 1:
-				m.pattern.Update(msg)
-				m.updatePreview()
-			case 3:
-				m.customPrefix.Update(msg)
+			case 1, 3:
+				key := msg.String()
+				if key == "space" {
+					if m.focusedField == 1 {
+						m.pattern.Value += " "
+						m.updatePreview()
+					} else {
+						m.customPrefix.Value += " "
+					}
+				} else if len(key) == 1 {
+					if m.focusedField == 1 {
+						m.pattern.Value += key
+						m.updatePreview()
+					} else {
+						m.customPrefix.Value += key
+					}
+				}
 			}
 			return m, nil
 		}

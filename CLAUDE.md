@@ -168,7 +168,7 @@ interior := titleBlock + spacer + contentBlock
 
 ### UI Design Principles
 
-1. **No emojis** - Professional text-only interface
+1. **No emojis** - Professional text-only interface. Use ASCII art, box-drawing characters, or other text-based visuals if decorative elements are needed
 2. **Consistent card heights** - All cards same size using `lipgloss.Place()`
 3. **Color-coded status** - Success (green), warning (orange), error (red), info (blue)
 4. **Minimal text** - Concise labels, no redundant "Press Enter" prompts

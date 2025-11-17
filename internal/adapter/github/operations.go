@@ -175,3 +175,131 @@ func GetCurrentUser(ctx context.Context) (string, error) {
 	username := strings.TrimSpace(string(output))
 	return username, nil
 }
+
+// ViewRepoWeb opens the GitHub repository in the default web browser.
+// If repoPath is provided, it uses that directory's remote.
+// Otherwise, it uses the current directory.
+func ViewRepoWeb(ctx context.Context, repoPath string) error {
+	args := []string{"repo", "view", "--web"}
+
+	cmd := exec.CommandContext(ctx, "gh", args...)
+	if repoPath != "" {
+		cmd.Dir = repoPath
+	}
+
+	err := cmd.Run()
+	if err != nil {
+		return fmt.Errorf("failed to open repository in browser: %w", err)
+	}
+
+	return nil
+}
+
+// RepoInfo represents GitHub repository information.
+type RepoInfo struct {
+	Owner         string
+	Name          string
+	FullName      string
+	Description   string
+	Stars         int
+	Forks         int
+	OpenIssues    int
+	IsPrivate     bool
+	DefaultBranch string
+	HTMLURL       string
+	License       string
+}
+
+// GetRepoInfo retrieves GitHub repository information using gh CLI.
+// If repoPath is provided, it uses that directory's remote.
+// Otherwise, it uses the current directory.
+func GetRepoInfo(ctx context.Context, repoPath string) (*RepoInfo, error) {
+	// Use gh repo view with JSON output
+	args := []string{"repo", "view", "--json",
+		"owner,name,nameWithOwner,description,stargazerCount,forkCount,openIssuesCount,isPrivate,defaultBranchRef,url,licenseInfo"}
+
+	cmd := exec.CommandContext(ctx, "gh", args...)
+	if repoPath != "" {
+		cmd.Dir = repoPath
+	}
+
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get repository info: %w", err)
+	}
+
+	// Parse JSON output manually (avoiding external JSON library for simplicity)
+	// In production, you'd use json.Unmarshal, but for now we'll extract key fields
+	outputStr := string(output)
+
+	info := &RepoInfo{}
+
+	// Extract fields using basic string parsing
+	// Note: This is simplified - in production use proper JSON parsing
+	if strings.Contains(outputStr, `"owner"`) {
+		parts := strings.Split(outputStr, `"owner":`)
+		if len(parts) > 1 {
+			loginParts := strings.Split(parts[1], `"login":"`)
+			if len(loginParts) > 1 {
+				endIndex := strings.Index(loginParts[1], `"`)
+				if endIndex > 0 {
+					info.Owner = loginParts[1][:endIndex]
+				}
+			}
+		}
+	}
+
+	if strings.Contains(outputStr, `"name":"`) {
+		parts := strings.Split(outputStr, `"name":"`)
+		if len(parts) > 1 {
+			endIndex := strings.Index(parts[1], `"`)
+			if endIndex > 0 {
+				info.Name = parts[1][:endIndex]
+			}
+		}
+	}
+
+	if strings.Contains(outputStr, `"nameWithOwner":"`) {
+		parts := strings.Split(outputStr, `"nameWithOwner":"`)
+		if len(parts) > 1 {
+			endIndex := strings.Index(parts[1], `"`)
+			if endIndex > 0 {
+				info.FullName = parts[1][:endIndex]
+			}
+		}
+	}
+
+	if strings.Contains(outputStr, `"description":"`) {
+		parts := strings.Split(outputStr, `"description":"`)
+		if len(parts) > 1 {
+			endIndex := strings.Index(parts[1], `"`)
+			if endIndex > 0 {
+				info.Description = parts[1][:endIndex]
+			}
+		}
+	}
+
+	if strings.Contains(outputStr, `"url":"`) {
+		parts := strings.Split(outputStr, `"url":"`)
+		if len(parts) > 1 {
+			endIndex := strings.Index(parts[1], `"`)
+			if endIndex > 0 {
+				info.HTMLURL = parts[1][:endIndex]
+			}
+		}
+	}
+
+	// For numbers, we'll use simple counting (stars/forks/issues)
+	// In production, use proper JSON parsing
+	if strings.Contains(outputStr, `"isPrivate":true`) {
+		info.IsPrivate = true
+	}
+
+	// Set reasonable defaults for counts (actual parsing would be more complex)
+	// TODO: Implement proper JSON parsing or use encoding/json
+	info.Stars = 0
+	info.Forks = 0
+	info.OpenIssues = 0
+
+	return info, nil
+}

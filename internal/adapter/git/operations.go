@@ -44,6 +44,18 @@ type Operations interface {
 	// Pull pulls changes from the remote repository.
 	Pull(ctx context.Context, repoPath string) error
 
+	// Fetch fetches updates from the remote repository without merging.
+	Fetch(ctx context.Context, repoPath string) error
+
+	// GetRemoteURL returns the URL for the specified remote (usually "origin").
+	GetRemoteURL(ctx context.Context, repoPath, remoteName string) (string, error)
+
+	// GetRemoteName returns the primary remote name (defaults to "origin").
+	GetRemoteName(ctx context.Context, repoPath string) (string, error)
+
+	// GetRemoteSyncStatus returns commits ahead/behind relative to remote tracking branch.
+	GetRemoteSyncStatus(ctx context.Context, repoPath, branch string) (ahead, behind int, err error)
+
 	// IsGitRepo returns true if the path is a valid git repository.
 	IsGitRepo(ctx context.Context, path string) (bool, error)
 
@@ -101,4 +113,10 @@ type DiffStats struct {
 	FilesChanged int
 	Insertions   int
 	Deletions    int
+}
+
+// GitHubRepo represents parsed GitHub repository information from a git URL.
+type GitHubRepo struct {
+	Owner string
+	Repo  string
 }

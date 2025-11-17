@@ -310,11 +310,14 @@ func (m *SettingsView) handleFieldInteraction() {
 	case SettingsGit:
 		switch m.focusedField {
 		case 1:
-			m.gitProtectedBranches.Toggle()
+			// Toggle focused checkbox in protected branches group
+			if m.gitProtectedBranches.FocusedIdx >= 0 && m.gitProtectedBranches.FocusedIdx < len(m.gitProtectedBranches.Items) {
+				m.gitProtectedBranches.Items[m.gitProtectedBranches.FocusedIdx].Checked = !m.gitProtectedBranches.Items[m.gitProtectedBranches.FocusedIdx].Checked
+			}
 		case 3:
-			m.gitAutoPush.Toggle()
+			m.gitAutoPush.Checked = !m.gitAutoPush.Checked
 		case 4:
-			m.gitAutoPull.Toggle()
+			m.gitAutoPull.Checked = !m.gitAutoPull.Checked
 		case 5:
 			// Save button - handled by saveSettings()
 		}
@@ -322,35 +325,41 @@ func (m *SettingsView) handleFieldInteraction() {
 	case SettingsGitHub:
 		switch m.focusedField {
 		case 0:
-			m.ghEnabled.Toggle()
+			m.ghEnabled.Checked = !m.ghEnabled.Checked
 		case 2:
 			m.ghDefaultLicense.Toggle()
 		case 3:
 			m.ghDefaultGitIgnore.Toggle()
 		case 4:
-			m.ghEnableIssues.Toggle()
+			m.ghEnableIssues.Checked = !m.ghEnableIssues.Checked
 		case 5:
-			m.ghEnableWiki.Toggle()
+			m.ghEnableWiki.Checked = !m.ghEnableWiki.Checked
 		case 6:
-			m.ghEnableProjects.Toggle()
+			m.ghEnableProjects.Checked = !m.ghEnableProjects.Checked
 		}
 
 	case SettingsCommits:
 		switch m.focusedField {
 		case 1:
-			m.commitTypes.Toggle()
+			// Toggle focused checkbox in commit types group
+			if m.commitTypes.FocusedIdx >= 0 && m.commitTypes.FocusedIdx < len(m.commitTypes.Items) {
+				m.commitTypes.Items[m.commitTypes.FocusedIdx].Checked = !m.commitTypes.Items[m.commitTypes.FocusedIdx].Checked
+			}
 		case 2:
-			m.commitRequireScope.Toggle()
+			m.commitRequireScope.Checked = !m.commitRequireScope.Checked
 		case 3:
-			m.commitRequireBreaking.Toggle()
+			m.commitRequireBreaking.Checked = !m.commitRequireBreaking.Checked
 		}
 
 	case SettingsNaming:
 		switch m.focusedField {
 		case 0:
-			m.namingEnforce.Toggle()
+			m.namingEnforce.Checked = !m.namingEnforce.Checked
 		case 2:
-			m.namingAllowedPrefixes.Toggle()
+			// Toggle focused checkbox in allowed prefixes group
+			if m.namingAllowedPrefixes.FocusedIdx >= 0 && m.namingAllowedPrefixes.FocusedIdx < len(m.namingAllowedPrefixes.Items) {
+				m.namingAllowedPrefixes.Items[m.namingAllowedPrefixes.FocusedIdx].Checked = !m.namingAllowedPrefixes.Items[m.namingAllowedPrefixes.FocusedIdx].Checked
+			}
 		}
 
 	case SettingsAI:
@@ -362,7 +371,7 @@ func (m *SettingsView) handleFieldInteraction() {
 		case 4:
 			m.aiFallbackModel.Toggle()
 		case 6:
-			m.aiIncludeContext.Toggle()
+			m.aiIncludeContext.Checked = !m.aiIncludeContext.Checked
 		}
 	}
 }
@@ -372,12 +381,13 @@ func (m *SettingsView) handleLeftKey() {
 	switch m.currentTab {
 	case SettingsGit:
 		if m.focusedField == 1 {
-			m.gitProtectedBranches.Previous()
+			// Navigate within protected branches checkbox group
+			m.gitProtectedBranches.FocusedIdx = (m.gitProtectedBranches.FocusedIdx - 1 + len(m.gitProtectedBranches.Items)) % len(m.gitProtectedBranches.Items)
 		}
 
 	case SettingsGitHub:
 		if m.focusedField == 1 {
-			m.ghDefaultVisibility.Previous()
+			m.ghDefaultVisibility.Selected = (m.ghDefaultVisibility.Selected - 1 + len(m.ghDefaultVisibility.Options)) % len(m.ghDefaultVisibility.Options)
 		} else if m.focusedField == 2 && m.ghDefaultLicense.Open {
 			m.ghDefaultLicense.Previous()
 		} else if m.focusedField == 3 && m.ghDefaultGitIgnore.Open {
@@ -387,14 +397,16 @@ func (m *SettingsView) handleLeftKey() {
 	case SettingsCommits:
 		switch m.focusedField {
 		case 0:
-			m.commitConvention.Previous()
+			m.commitConvention.Selected = (m.commitConvention.Selected - 1 + len(m.commitConvention.Options)) % len(m.commitConvention.Options)
 		case 1:
-			m.commitTypes.Previous()
+			// Navigate within commit types checkbox group
+			m.commitTypes.FocusedIdx = (m.commitTypes.FocusedIdx - 1 + len(m.commitTypes.Items)) % len(m.commitTypes.Items)
 		}
 
 	case SettingsNaming:
 		if m.focusedField == 2 {
-			m.namingAllowedPrefixes.Previous()
+			// Navigate within allowed prefixes checkbox group
+			m.namingAllowedPrefixes.FocusedIdx = (m.namingAllowedPrefixes.FocusedIdx - 1 + len(m.namingAllowedPrefixes.Items)) % len(m.namingAllowedPrefixes.Items)
 		}
 
 	case SettingsAI:
@@ -415,12 +427,13 @@ func (m *SettingsView) handleRightKey() {
 	switch m.currentTab {
 	case SettingsGit:
 		if m.focusedField == 1 {
-			m.gitProtectedBranches.Next()
+			// Navigate within protected branches checkbox group
+			m.gitProtectedBranches.FocusedIdx = (m.gitProtectedBranches.FocusedIdx + 1) % len(m.gitProtectedBranches.Items)
 		}
 
 	case SettingsGitHub:
 		if m.focusedField == 1 {
-			m.ghDefaultVisibility.Next()
+			m.ghDefaultVisibility.Selected = (m.ghDefaultVisibility.Selected + 1) % len(m.ghDefaultVisibility.Options)
 		} else if m.focusedField == 2 && m.ghDefaultLicense.Open {
 			m.ghDefaultLicense.Next()
 		} else if m.focusedField == 3 && m.ghDefaultGitIgnore.Open {
@@ -430,15 +443,17 @@ func (m *SettingsView) handleRightKey() {
 	case SettingsCommits:
 		switch m.focusedField {
 		case 0:
-			m.commitConvention.Next()
+			m.commitConvention.Selected = (m.commitConvention.Selected + 1) % len(m.commitConvention.Options)
 		case 1:
-			m.commitTypes.Next()
+			// Navigate within commit types checkbox group
+			m.commitTypes.FocusedIdx = (m.commitTypes.FocusedIdx + 1) % len(m.commitTypes.Items)
 		}
 
 	case SettingsNaming:
 		switch m.focusedField {
 		case 2:
-			m.namingAllowedPrefixes.Next()
+			// Navigate within allowed prefixes checkbox group
+			m.namingAllowedPrefixes.FocusedIdx = (m.namingAllowedPrefixes.FocusedIdx + 1) % len(m.namingAllowedPrefixes.Items)
 		}
 
 	case SettingsAI:

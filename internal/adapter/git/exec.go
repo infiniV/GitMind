@@ -106,6 +106,32 @@ func (e *ExecOperations) GetStatus(ctx context.Context, repoPath string) (*domai
 	}
 	repo.SetHasRemote(hasRemote)
 
+	// If has remote, get remote information
+	if hasRemote {
+		// Get remote name (usually "origin")
+		remoteName, err := e.GetRemoteName(ctx, repoPath)
+		if err == nil {
+			repo.SetRemoteName(remoteName)
+
+			// Get remote URL
+			remoteURL, err := e.GetRemoteURL(ctx, repoPath, remoteName)
+			if err == nil {
+				repo.SetRemoteURL(remoteURL)
+
+				// Check if it's a GitHub remote
+				isGitHub := IsGitHubRemote(remoteURL)
+				repo.SetIsGitHubRemote(isGitHub)
+			}
+
+			// Get ahead/behind counts
+			ahead, behind, err := e.GetRemoteSyncStatus(ctx, repoPath, branch)
+			if err == nil {
+				repo.SetCommitsAhead(ahead)
+				repo.SetCommitsBehind(behind)
+			}
+		}
+	}
+
 	// Get status in porcelain format
 	stdout, stderr, err := e.execGit(ctx, repoPath, "status", "--porcelain")
 	if err != nil {
@@ -400,6 +426,97 @@ func (e *ExecOperations) Pull(ctx context.Context, repoPath string) error {
 	}
 
 	return nil
+}
+
+// Fetch fetches updates from the remote repository without merging.
+func (e *ExecOperations) Fetch(ctx context.Context, repoPath string) error {
+	_, stderr, err := e.execGit(ctx, repoPath, "fetch")
+	if err != nil {
+		return fmt.Errorf("failed to fetch: %s: %w", stderr, err)
+	}
+
+	return nil
+}
+
+// GetRemoteURL returns the URL for the specified remote.
+func (e *ExecOperations) GetRemoteURL(ctx context.Context, repoPath, remoteName string) (string, error) {
+	if remoteName == "" {
+		remoteName = "origin"
+	}
+
+	stdout, stderr, err := e.execGit(ctx, repoPath, "remote", "get-url", remoteName)
+	if err != nil {
+		if strings.Contains(stderr, "No such remote") {
+			return "", fmt.Errorf("remote '%s' not found", remoteName)
+		}
+		return "", fmt.Errorf("failed to get remote URL: %s: %w", stderr, err)
+	}
+
+	return stdout, nil
+}
+
+// GetRemoteName returns the primary remote name (defaults to "origin").
+func (e *ExecOperations) GetRemoteName(ctx context.Context, repoPath string) (string, error) {
+	stdout, _, err := e.execGit(ctx, repoPath, "remote")
+	if err != nil {
+		return "", fmt.Errorf("failed to get remotes: %w", err)
+	}
+
+	remotes := strings.Split(strings.TrimSpace(stdout), "\n")
+	if len(remotes) == 0 || remotes[0] == "" {
+		return "", errors.New("no remotes configured")
+	}
+
+	// Prefer "origin" if it exists
+	for _, remote := range remotes {
+		if remote == "origin" {
+			return "origin", nil
+		}
+	}
+
+	// Otherwise return the first remote
+	return remotes[0], nil
+}
+
+// GetRemoteSyncStatus returns commits ahead/behind relative to remote tracking branch.
+func (e *ExecOperations) GetRemoteSyncStatus(ctx context.Context, repoPath, branch string) (ahead, behind int, err error) {
+	if branch == "" {
+		branch, err = e.GetCurrentBranch(ctx, repoPath)
+		if err != nil {
+			return 0, 0, err
+		}
+	}
+
+	// Get the remote tracking branch
+	remoteBranch, _, err := e.execGit(ctx, repoPath, "rev-parse", "--abbrev-ref", branch+"@{upstream}")
+	if err != nil {
+		// No upstream branch configured
+		return 0, 0, nil
+	}
+
+	// Get ahead/behind counts
+	stdout, stderr, err := e.execGit(ctx, repoPath, "rev-list", "--left-right", "--count", branch+"..."+remoteBranch)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to get divergence: %s: %w", stderr, err)
+	}
+
+	// Parse output: "ahead\tbehind"
+	parts := strings.Split(stdout, "\t")
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("unexpected git output format: %s", stdout)
+	}
+
+	_, err = fmt.Sscanf(parts[0], "%d", &ahead)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to parse ahead count: %w", err)
+	}
+
+	_, err = fmt.Sscanf(parts[1], "%d", &behind)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to parse behind count: %w", err)
+	}
+
+	return ahead, behind, nil
 }
 
 // GetLog returns recent commit history.
@@ -777,4 +894,59 @@ func (e *ExecOperations) AbortMerge(ctx context.Context, repoPath string) error 
 		return fmt.Errorf("failed to abort merge: %s: %w", stderr, err)
 	}
 	return nil
+}
+
+// IsGitHubRemote returns true if the remote URL is a GitHub repository.
+func IsGitHubRemote(remoteURL string) bool {
+	if remoteURL == "" {
+		return false
+	}
+
+	// Check for github.com in the URL
+	return strings.Contains(strings.ToLower(remoteURL), "github.com")
+}
+
+// ParseGitHubRepo extracts owner and repo name from a GitHub remote URL.
+// Supports both HTTPS and SSH formats:
+// - https://github.com/owner/repo.git
+// - git@github.com:owner/repo.git
+func ParseGitHubRepo(remoteURL string) (*GitHubRepo, error) {
+	if remoteURL == "" {
+		return nil, errors.New("remote URL is empty")
+	}
+
+	// Remove .git suffix if present
+	remoteURL = strings.TrimSuffix(remoteURL, ".git")
+
+	var path string
+
+	// Handle HTTPS URLs
+	if strings.HasPrefix(remoteURL, "https://") || strings.HasPrefix(remoteURL, "http://") {
+		// Extract path after github.com/
+		parts := strings.Split(remoteURL, "github.com/")
+		if len(parts) < 2 {
+			return nil, fmt.Errorf("invalid GitHub URL format: %s", remoteURL)
+		}
+		path = parts[1]
+	} else if strings.HasPrefix(remoteURL, "git@") {
+		// Handle SSH URLs: git@github.com:owner/repo
+		parts := strings.Split(remoteURL, ":")
+		if len(parts) < 2 {
+			return nil, fmt.Errorf("invalid GitHub SSH URL format: %s", remoteURL)
+		}
+		path = parts[1]
+	} else {
+		return nil, fmt.Errorf("unsupported URL format: %s", remoteURL)
+	}
+
+	// Split path into owner/repo
+	pathParts := strings.SplitN(path, "/", 2)
+	if len(pathParts) != 2 {
+		return nil, fmt.Errorf("could not parse owner/repo from: %s", path)
+	}
+
+	return &GitHubRepo{
+		Owner: pathParts[0],
+		Repo:  pathParts[1],
+	}, nil
 }

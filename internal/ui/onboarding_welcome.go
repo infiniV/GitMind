@@ -52,60 +52,109 @@ func (m OnboardingWelcomeScreen) Update(msg tea.Msg) (OnboardingWelcomeScreen, t
 func (m OnboardingWelcomeScreen) View() string {
 	var sections []string
 
-	// Header
-	header := headerStyle.Render("Welcome to GitMind")
-	sections = append(sections, header)
-
-	// Progress
-	progress := fmt.Sprintf("Step %d of %d", m.step, m.totalSteps)
-	sections = append(sections, metadataStyle.Render(progress))
-
 	sections = append(sections, "")
+	sections = append(sections, "")
+
+	// ASCII Art Logo
+	logoStyle := lipgloss.NewStyle().
+		Foreground(colorPrimary).
+		Bold(true).
+		Align(lipgloss.Center)
+
+	logo := logoStyle.Render(
+		`
+   ██████╗ ██╗████████╗    ███╗   ███╗██╗███╗   ██╗██████╗
+  ██╔════╝ ██║╚══██╔══╝    ████╗ ████║██║████╗  ██║██╔══██╗
+  ██║  ███╗██║   ██║       ██╔████╔██║██║██╔██╗ ██║██║  ██║
+  ██║   ██║██║   ██║       ██║╚██╔╝██║██║██║╚██╗██║██║  ██║
+  ╚██████╔╝██║   ██║       ██║ ╚═╝ ██║██║██║ ╚████║██████╔╝
+   ╚═════╝ ╚═╝   ╚═╝       ╚═╝     ╚═╝╚═╝╚═╝  ╚═══╝╚═════╝`)
+
+	sections = append(sections, logo)
+
+	// Tagline
+	taglineStyle := lipgloss.NewStyle().
+		Foreground(colorMuted).
+		Italic(true).
+		Align(lipgloss.Center).
+		MarginTop(1).
+		MarginBottom(2)
+
+	tagline := taglineStyle.Render("AI-Powered Git Workflow Intelligence")
+	sections = append(sections, tagline)
+
+	// Progress indicator
+	progressStyle := lipgloss.NewStyle().
+		Foreground(colorMuted).
+		Align(lipgloss.Center).
+		MarginBottom(3)
+
+	progressBar := m.renderProgressBar()
+	sections = append(sections, progressStyle.Render(progressBar))
 
 	// Welcome message
-	welcome := lipgloss.NewStyle().
+	welcomeStyle := lipgloss.NewStyle().
 		Foreground(colorText).
+		Align(lipgloss.Center).
 		Width(70).
-		Render(
-			"GitMind is an AI-powered Git workflow manager that helps you:\n\n" +
-				"  • Generate intelligent commit messages\n" +
-				"  • Make smart branching decisions\n" +
-				"  • Automate merge workflows\n" +
-				"  • Follow best practices\n\n" +
-				"This setup wizard will help you configure GitMind for your workspace.\n" +
-				"It will take about 2-3 minutes to complete.",
-		)
+		MarginBottom(2)
+
+	welcome := welcomeStyle.Render(
+		"Welcome to GitMind! This wizard will help you configure your workspace.\n\n" +
+			"We'll set up Git integration, AI providers, and workflow preferences.\n" +
+			"The setup takes approximately 2-3 minutes to complete.",
+	)
 	sections = append(sections, welcome)
 
-	sections = append(sections, "")
-	sections = append(sections, renderSeparator(70))
+	// Separator
+	separatorStyle := lipgloss.NewStyle().
+		Foreground(colorBorder).
+		Align(lipgloss.Center)
+
+	sections = append(sections, separatorStyle.Render(strings.Repeat("─", 70)))
 	sections = append(sections, "")
 
-	// What we'll configure
-	configList := lipgloss.NewStyle().
-		Foreground(colorText).
-		Render(
-			"We'll configure:\n\n" +
-				"  1. Git repository setup\n" +
-				"  2. GitHub integration (optional)\n" +
-				"  3. Branch preferences\n" +
-				"  4. Commit conventions\n" +
-				"  5. Branch naming patterns\n" +
-				"  6. AI provider settings",
-		)
-	sections = append(sections, configList)
+	// Footer with enhanced styling
+	footerStyle := lipgloss.NewStyle().
+		Foreground(colorMuted).
+		Align(lipgloss.Center).
+		MarginTop(1)
 
-	sections = append(sections, "")
-	sections = append(sections, renderSeparator(70))
-
-	// Footer
 	footer := footerStyle.Render(
-		shortcutKeyStyle.Render("Enter") + " " + shortcutDescStyle.Render("Continue") + "  " +
+		shortcutKeyStyle.Render("Enter") + " " + shortcutDescStyle.Render("Continue") + "    " +
 			shortcutKeyStyle.Render("Esc") + " " + shortcutDescStyle.Render("Skip setup"),
 	)
 	sections = append(sections, footer)
 
-	return strings.Join(sections, "\n")
+	// Center everything
+	content := strings.Join(sections, "\n")
+	return lipgloss.NewStyle().
+		Align(lipgloss.Center).
+		Width(100).
+		Render(content)
+}
+
+// renderProgressBar creates a visual progress indicator
+func (m OnboardingWelcomeScreen) renderProgressBar() string {
+	totalDots := 8
+	currentDot := m.step
+
+	var dots []string
+	for i := 1; i <= totalDots; i++ {
+		if i == currentDot {
+			dots = append(dots, lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render("●"))
+		} else if i < currentDot {
+			dots = append(dots, lipgloss.NewStyle().Foreground(colorSuccess).Render("●"))
+		} else {
+			dots = append(dots, lipgloss.NewStyle().Foreground(colorMuted).Render("○"))
+		}
+	}
+
+	progressText := lipgloss.NewStyle().Foreground(colorMuted).Render(
+		fmt.Sprintf("Step %d of %d", m.step, m.totalSteps),
+	)
+
+	return progressText + "  " + strings.Join(dots, " ")
 }
 
 // ShouldContinue returns true if user wants to continue

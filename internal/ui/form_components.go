@@ -57,18 +57,33 @@ func (t TextInput) View() string {
 
 	// Input value or placeholder
 	displayValue := t.Value
-	if displayValue == "" {
-		displayValue = lipgloss.NewStyle().Foreground(colorMuted).Render(t.Placeholder)
+	if displayValue == "" && !t.Focused {
+		displayValue = t.Placeholder
+	} else if displayValue == "" && t.Focused {
+		displayValue = "" // Show empty with cursor
 	} else if t.Password {
 		displayValue = strings.Repeat("*", len(t.Value))
+	}
+
+	// Add cursor when focused
+	if t.Focused {
+		displayValue += "█" // Block cursor
 	}
 
 	// Input field
 	var inputStyle lipgloss.Style
 	if t.Focused {
 		inputStyle = formInputFocusedStyle.Width(t.Width)
+		// Apply different text color for the value vs placeholder
+		if t.Value == "" {
+			displayValue = lipgloss.NewStyle().Foreground(colorMuted).Render(t.Placeholder) +
+				lipgloss.NewStyle().Foreground(colorPrimary).Render("█")
+		}
 	} else {
 		inputStyle = formInputStyle.Width(t.Width)
+		if t.Value == "" {
+			displayValue = lipgloss.NewStyle().Foreground(colorMuted).Render(t.Placeholder)
+		}
 	}
 
 	input := inputStyle.Render(displayValue)
@@ -105,13 +120,15 @@ func (c Checkbox) View() string {
 	}
 
 	var style lipgloss.Style
+	prefix := "  "
 	if c.Focused {
 		style = optionCursorStyle
+		prefix = "> " // Arrow indicator for focused
 	} else {
 		style = optionNormalStyle
 	}
 
-	return style.Render(checkbox + " " + c.Label)
+	return prefix + style.Render(checkbox+" "+c.Label)
 }
 
 // RadioGroup represents a group of radio buttons
@@ -159,15 +176,21 @@ func (r RadioGroup) View() string {
 		}
 
 		var style lipgloss.Style
+		prefix := "  "
+		suffix := ""
+
 		if r.Focused && i == r.Selected {
 			style = optionCursorStyle
+			prefix = "> " // Arrow for focused
+			// Show navigation hint on focused option
+			suffix = " " + lipgloss.NewStyle().Foreground(colorMuted).Render("(←/→)")
 		} else if i == r.Selected {
 			style = optionSelectedStyle
 		} else {
 			style = optionNormalStyle
 		}
 
-		lines = append(lines, "  "+style.Render(radio+" "+option))
+		lines = append(lines, prefix+style.Render(radio+" "+option)+suffix)
 	}
 
 	return strings.Join(lines, "\n")
@@ -235,7 +258,8 @@ func (c CheckboxGroup) View() string {
 	// Checkboxes
 	for i := range c.Items {
 		c.Items[i].Focused = (i == c.FocusedIdx)
-		lines = append(lines, "  "+c.Items[i].View())
+		// Don't add extra prefix - Checkbox.View() already handles it ("> " or "  ")
+		lines = append(lines, c.Items[i].View())
 	}
 
 	return strings.Join(lines, "\n")
@@ -323,8 +347,14 @@ func (d Dropdown) View() string {
 
 	selectedValue := d.Options[d.Selected]
 	arrow := "▼"
+	navHint := ""
+
 	if d.Open {
 		arrow = "▲"
+		if d.Focused {
+			// Show navigation hint when dropdown is open and focused
+			navHint = " " + lipgloss.NewStyle().Foreground(colorMuted).Render("(←/→)")
+		}
 	}
 
 	var style lipgloss.Style
@@ -336,7 +366,7 @@ func (d Dropdown) View() string {
 
 	dropdown := style.Render(selectedValue + " " + arrow)
 
-	result := lipgloss.JoinHorizontal(lipgloss.Top, label, " ", dropdown)
+	result := lipgloss.JoinHorizontal(lipgloss.Top, label, " ", dropdown) + navHint
 
 	// If open, show options below
 	if d.Open {

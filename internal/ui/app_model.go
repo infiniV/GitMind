@@ -10,9 +10,29 @@ import (
 	"github.com/yourusername/gitman/internal/adapter/ai"
 	"github.com/yourusername/gitman/internal/adapter/config"
 	"github.com/yourusername/gitman/internal/adapter/git"
+	"github.com/yourusername/gitman/internal/adapter/github"
 	"github.com/yourusername/gitman/internal/domain"
 	"github.com/yourusername/gitman/internal/usecase"
 )
+
+// GitHubOperations defines the interface for GitHub operations
+type GitHubOperations interface {
+	ViewRepoWeb(ctx context.Context, repoPath string) error
+	GetRepoInfo(ctx context.Context, repoPath string) (*github.RepoInfo, error)
+}
+
+// GitHubOps is a simple implementation of GitHubOperations
+type GitHubOps struct{}
+
+// ViewRepoWeb opens the repository in the browser
+func (g GitHubOps) ViewRepoWeb(ctx context.Context, repoPath string) error {
+	return github.ViewRepoWeb(ctx, repoPath)
+}
+
+// GetRepoInfo retrieves repository information
+func (g GitHubOps) GetRepoInfo(ctx context.Context, repoPath string) (*github.RepoInfo, error) {
+	return github.GetRepoInfo(ctx, repoPath)
+}
 
 // AppState represents the current state of the application
 type AppState int
@@ -54,6 +74,7 @@ type AppModel struct {
 	// Dependencies
 	gitOps     git.Operations
 	aiProvider ai.Provider
+	githubOps  GitHubOperations
 	cfg        *domain.Config
 	cfgManager *config.Manager
 	repoPath   string
@@ -80,6 +101,7 @@ type AppModel struct {
 // NewAppModel creates a new root application model
 func NewAppModel(gitOps git.Operations, aiProvider ai.Provider, cfg *domain.Config, cfgManager *config.Manager, repoPath string) AppModel {
 	dashboard := NewDashboardModel(gitOps, repoPath)
+	githubOps := GitHubOps{}
 
 	return AppModel{
 		state:        StateDashboard,
@@ -87,6 +109,7 @@ func NewAppModel(gitOps git.Operations, aiProvider ai.Provider, cfg *domain.Conf
 		dashboard:    &dashboard,
 		gitOps:       gitOps,
 		aiProvider:   aiProvider,
+		githubOps:    githubOps,
 		cfg:          cfg,
 		cfgManager:   cfgManager,
 		repoPath:     repoPath,
@@ -96,6 +119,7 @@ func NewAppModel(gitOps git.Operations, aiProvider ai.Provider, cfg *domain.Conf
 
 // NewAppModelWithOnboarding creates an AppModel that starts in onboarding mode
 func NewAppModelWithOnboarding(gitOps git.Operations, cfg *domain.Config, cfgManager *config.Manager, repoPath string) AppModel {
+	githubOps := GitHubOps{}
 	onboarding := NewOnboardingModel(cfg, cfgManager, gitOps, repoPath)
 
 	return AppModel{
@@ -103,6 +127,7 @@ func NewAppModelWithOnboarding(gitOps git.Operations, cfg *domain.Config, cfgMan
 		currentTab:     TabDashboard,
 		onboardingView: &onboarding,
 		gitOps:         gitOps,
+		githubOps:      githubOps,
 		cfg:            cfg,
 		cfgManager:     cfgManager,
 		repoPath:       repoPath,
@@ -388,6 +413,98 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Refresh dashboard
 				return m, m.dashboard.Init()
 			}
+
+		case ActionFetch:
+			// Fetch updates from remote
+			ctx := context.Background()
+			PrintInfo("Fetching from remote...")
+			if err := m.gitOps.Fetch(ctx, m.repoPath); err != nil {
+				PrintError(fmt.Sprintf("Failed to fetch: %v", err))
+			} else {
+				PrintSuccess("Fetched updates from remote")
+			}
+			// Refresh dashboard to show new sync status
+			return m, m.dashboard.Init()
+
+		case ActionPull:
+			// Pull changes from remote
+			ctx := context.Background()
+			PrintInfo("Pulling from remote...")
+			if err := m.gitOps.Pull(ctx, m.repoPath); err != nil {
+				PrintError(fmt.Sprintf("Failed to pull: %v", err))
+			} else {
+				PrintSuccess("Pulled changes from remote")
+			}
+			// Refresh dashboard
+			return m, m.dashboard.Init()
+
+		case ActionPush:
+			// Push commits to remote
+			ctx := context.Background()
+			branch, _ := m.gitOps.GetCurrentBranch(ctx, m.repoPath)
+			PrintInfo(fmt.Sprintf("Pushing to remote (%s)...", branch))
+			if err := m.gitOps.Push(ctx, m.repoPath, branch, false); err != nil {
+				PrintError(fmt.Sprintf("Failed to push: %v", err))
+			} else {
+				PrintSuccess("Pushed commits to remote")
+			}
+			// Refresh dashboard
+			return m, m.dashboard.Init()
+
+		case ActionViewGitHub:
+			// Open repository in browser using gh CLI
+			ctx := context.Background()
+			PrintInfo("Opening repository in browser...")
+			if err := m.githubOps.ViewRepoWeb(ctx, m.repoPath); err != nil {
+				PrintError(fmt.Sprintf("Failed to open repository: %v", err))
+			} else {
+				PrintSuccess("Opened repository in browser")
+			}
+			// Stay on dashboard
+			return m, cmd
+
+		case ActionShowGitHubInfo:
+			// Show GitHub repository information
+			ctx := context.Background()
+			PrintInfo("Fetching GitHub repository info...")
+			info, err := m.githubOps.GetRepoInfo(ctx, m.repoPath)
+			if err != nil {
+				PrintError(fmt.Sprintf("Failed to get repository info: %v", err))
+			} else {
+				// Display basic info
+				PrintInfo(fmt.Sprintf("\nGitHub Repository: %s", info.FullName))
+				if info.Description != "" {
+					PrintInfo(fmt.Sprintf("Description: %s", info.Description))
+				}
+				if info.IsPrivate {
+					PrintInfo("Visibility: Private")
+				} else {
+					PrintInfo("Visibility: Public")
+				}
+				if info.HTMLURL != "" {
+					PrintInfo(fmt.Sprintf("URL: %s", info.HTMLURL))
+				}
+			}
+			// Stay on dashboard
+			return m, cmd
+
+		case ActionSetupRemote:
+			// Transition to onboarding GitHub step
+			PrintInfo("Launching remote setup...")
+			onboarding := NewOnboardingModel(m.cfg, m.cfgManager, m.gitOps, m.repoPath)
+			// Jump directly to GitHub step
+			onboarding.state = OnboardingGitHub
+			onboarding.currentStep = 3 // GitHub is step 3
+			screen := NewOnboardingGitHubScreen(3, 8, m.cfg, m.repoPath)
+			onboarding.githubScreen = &screen
+			m.onboardingView = &onboarding
+			m.state = StateOnboarding
+			return m, screen.Init()
+
+		case ActionRefresh:
+			// Refresh dashboard
+			PrintInfo("Refreshing dashboard...")
+			return m, m.dashboard.Init()
 		}
 
 		return m, cmd
