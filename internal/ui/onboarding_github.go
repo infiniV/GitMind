@@ -326,30 +326,31 @@ func (m OnboardingGitHubScreen) createRepository() tea.Cmd {
 
 // View renders the GitHub screen
 func (m OnboardingGitHubScreen) View() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	var sections []string
 
 	// Header
-	header := headerStyle.Render("GitHub Integration")
+	header := styles.Header.Render("GitHub Integration")
 	sections = append(sections, header)
 
 	// Progress
 	progress := fmt.Sprintf("Step %d of %d", m.step, m.totalSteps)
-	sections = append(sections, metadataStyle.Render(progress))
+	sections = append(sections, styles.Metadata.Render(progress))
 
 	sections = append(sections, "")
 
 	// Check if checking status
 	if !m.checkComplete {
-		sections = append(sections, lipgloss.NewStyle().Foreground(colorMuted).Render("Checking GitHub CLI..."))
+		sections = append(sections, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("Checking GitHub CLI..."))
 		return strings.Join(sections, "\n")
 	}
 
 	// If gh not available
 	if !m.ghAvailable {
-		sections = append(sections, statusWarningStyle.Render("!")+" "+
-			lipgloss.NewStyle().Foreground(colorText).Render("GitHub CLI (gh) not found"))
+		sections = append(sections, styles.StatusWarning.Render("!")+" "+
+			lipgloss.NewStyle().Foreground(styles.ColorText).Render("GitHub CLI (gh) not found"))
 		sections = append(sections, "")
-		sections = append(sections, lipgloss.NewStyle().Foreground(colorMuted).Render(
+		sections = append(sections, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(
 			"The GitHub CLI is not installed or not in your PATH.\n\n"+
 				"To use GitHub integration, install it from:\n"+
 				"  https://cli.github.com/\n\n"+
@@ -357,19 +358,19 @@ func (m OnboardingGitHubScreen) View() string {
 		sections = append(sections, "")
 		sections = append(sections, renderSeparator(70))
 		sections = append(sections, "")
-		sections = append(sections, footerStyle.Render(
-			shortcutKeyStyle.Render("Enter")+" "+shortcutDescStyle.Render("Skip & Continue")+"  "+
-				shortcutKeyStyle.Render("Esc")+" "+shortcutDescStyle.Render("Back")+"  "+
-				shortcutKeyStyle.Render("S")+" "+shortcutDescStyle.Render("Skip")))
+		sections = append(sections, styles.Footer.Render(
+			styles.ShortcutKey.Render("Enter")+" "+styles.ShortcutDesc.Render("Skip & Continue")+"  "+
+				styles.ShortcutKey.Render("Esc")+" "+styles.ShortcutDesc.Render("Back")+"  "+
+				styles.ShortcutKey.Render("S")+" "+styles.ShortcutDesc.Render("Skip")))
 		return strings.Join(sections, "\n")
 	}
 
 	// If not authenticated
 	if !m.ghAuthenticated {
-		sections = append(sections, statusWarningStyle.Render("!")+" "+
-			lipgloss.NewStyle().Foreground(colorText).Render("GitHub CLI not authenticated"))
+		sections = append(sections, styles.StatusWarning.Render("!")+" "+
+			lipgloss.NewStyle().Foreground(styles.ColorText).Render("GitHub CLI not authenticated"))
 		sections = append(sections, "")
-		sections = append(sections, lipgloss.NewStyle().Foreground(colorMuted).Render(
+		sections = append(sections, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(
 			"You need to authenticate with GitHub first.\n\n"+
 				"Run this command in a separate terminal:\n\n"+
 				"  gh auth login\n\n"+
@@ -377,51 +378,51 @@ func (m OnboardingGitHubScreen) View() string {
 		sections = append(sections, "")
 		sections = append(sections, renderSeparator(70))
 		sections = append(sections, "")
-		sections = append(sections, footerStyle.Render(
-			shortcutKeyStyle.Render("Enter")+" "+shortcutDescStyle.Render("Skip & Continue")+"  "+
-				shortcutKeyStyle.Render("Esc")+" "+shortcutDescStyle.Render("Back")+"  "+
-				shortcutKeyStyle.Render("S")+" "+shortcutDescStyle.Render("Skip")))
+		sections = append(sections, styles.Footer.Render(
+			styles.ShortcutKey.Render("Enter")+" "+styles.ShortcutDesc.Render("Skip & Continue")+"  "+
+				styles.ShortcutKey.Render("Esc")+" "+styles.ShortcutDesc.Render("Back")+"  "+
+				styles.ShortcutKey.Render("S")+" "+styles.ShortcutDesc.Render("Skip")))
 		return strings.Join(sections, "\n")
 	}
 
 	// If remote already exists
 	if m.hasRemote {
-		sections = append(sections, statusOkStyle.Render("✓")+" "+
-			lipgloss.NewStyle().Foreground(colorText).Render("Git remote already configured"))
+		sections = append(sections, styles.StatusOk.Render("✓")+" "+
+			lipgloss.NewStyle().Foreground(styles.ColorText).Render("Git remote already configured"))
 		sections = append(sections, "")
-		sections = append(sections, lipgloss.NewStyle().Foreground(colorMuted).Render(
+		sections = append(sections, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(
 			"Your repository already has a remote origin configured.\n"+
 				"You can skip this step or reconfigure it later via Settings."))
 		sections = append(sections, "")
 		sections = append(sections, renderSeparator(70))
 		sections = append(sections, "")
-		sections = append(sections, footerStyle.Render(
-			shortcutKeyStyle.Render("Enter")+" "+shortcutDescStyle.Render("Continue")+"  "+
-				shortcutKeyStyle.Render("Esc")+" "+shortcutDescStyle.Render("Back")+"  "+
-				shortcutKeyStyle.Render("S")+" "+shortcutDescStyle.Render("Skip")))
+		sections = append(sections, styles.Footer.Render(
+			styles.ShortcutKey.Render("Enter")+" "+styles.ShortcutDesc.Render("Continue")+"  "+
+				styles.ShortcutKey.Render("Esc")+" "+styles.ShortcutDesc.Render("Back")+"  "+
+				styles.ShortcutKey.Render("S")+" "+styles.ShortcutDesc.Render("Skip")))
 		return strings.Join(sections, "\n")
 	}
 
 	// If creating
 	if m.creating {
-		sections = append(sections, lipgloss.NewStyle().Foreground(colorPrimary).Render("Creating GitHub repository..."))
+		sections = append(sections, lipgloss.NewStyle().Foreground(styles.ColorPrimary).Render("Creating GitHub repository..."))
 		return strings.Join(sections, "\n")
 	}
 
 	// If create complete
 	if m.createComplete {
-		sections = append(sections, statusOkStyle.Render("✓")+" "+
-			lipgloss.NewStyle().Foreground(colorText).Render("Repository created successfully!"))
+		sections = append(sections, styles.StatusOk.Render("✓")+" "+
+			lipgloss.NewStyle().Foreground(styles.ColorText).Render("Repository created successfully!"))
 		sections = append(sections, "")
 		sections = append(sections, renderSeparator(70))
 		sections = append(sections, "")
-		sections = append(sections, footerStyle.Render(
-			shortcutKeyStyle.Render("Enter")+" "+shortcutDescStyle.Render("Continue")))
+		sections = append(sections, styles.Footer.Render(
+			styles.ShortcutKey.Render("Enter")+" "+styles.ShortcutDesc.Render("Continue")))
 		return strings.Join(sections, "\n")
 	}
 
 	// Full form
-	sections = append(sections, lipgloss.NewStyle().Foreground(colorText).Render(
+	sections = append(sections, lipgloss.NewStyle().Foreground(styles.ColorText).Render(
 		"Create a new GitHub repository for this project:"))
 	sections = append(sections, "")
 
@@ -451,7 +452,7 @@ func (m OnboardingGitHubScreen) View() string {
 	sections = append(sections, "")
 
 	// Checkboxes
-	sections = append(sections, formLabelStyle.Render("Options:"))
+	sections = append(sections, styles.FormLabel.Render("Options:"))
 	m.addReadme.Focused = (m.focusedField == 5)
 	sections = append(sections, m.addReadme.View())
 	m.enableIssues.Focused = (m.focusedField == 6)
@@ -471,32 +472,32 @@ func (m OnboardingGitHubScreen) View() string {
 	// Error
 	if m.error != "" {
 		sections = append(sections, "")
-		sections = append(sections, statusErrorStyle.Render("Error: "+m.error))
+		sections = append(sections, styles.StatusError.Render("Error: "+m.error))
 	}
 
 	sections = append(sections, "")
 	sections = append(sections, renderSeparator(70))
 
 	// Footer - simple, consistent instructions
-	footerText := shortcutKeyStyle.Render("Tab/↑↓") + " " + shortcutDescStyle.Render("Navigate") + "  " +
-		shortcutKeyStyle.Render("Enter") + " " + shortcutDescStyle.Render("Next/Select") + "  " +
-		shortcutKeyStyle.Render("Esc") + " " + shortcutDescStyle.Render("Back") + "  " +
-		shortcutKeyStyle.Render("S") + " " + shortcutDescStyle.Render("Skip")
+	footerText := styles.ShortcutKey.Render("Tab/↑↓") + " " + styles.ShortcutDesc.Render("Navigate") + "  " +
+		styles.ShortcutKey.Render("Enter") + " " + styles.ShortcutDesc.Render("Next/Select") + "  " +
+		styles.ShortcutKey.Render("Esc") + " " + styles.ShortcutDesc.Render("Back") + "  " +
+		styles.ShortcutKey.Render("S") + " " + styles.ShortcutDesc.Render("Skip")
 
 	// Add field-specific hints
 	if m.focusedField == 0 || m.focusedField == 1 {
 		// Text input
-		footerText = shortcutKeyStyle.Render("Type") + " " + shortcutDescStyle.Render("to edit") + "  " + footerText
+		footerText = styles.ShortcutKey.Render("Type") + " " + styles.ShortcutDesc.Render("to edit") + "  " + footerText
 	} else if m.focusedField >= 5 && m.focusedField <= 8 {
 		// Checkbox
-		footerText = shortcutKeyStyle.Render("Space") + " " + shortcutDescStyle.Render("Toggle") + "  " + footerText
+		footerText = styles.ShortcutKey.Render("Space") + " " + styles.ShortcutDesc.Render("Toggle") + "  " + footerText
 	} else if m.focusedField == 9 {
 		// Button
-		footerText = shortcutKeyStyle.Render("Enter") + " " + shortcutDescStyle.Render("Create Repository") + "  " +
-			shortcutKeyStyle.Render("Esc") + " " + shortcutDescStyle.Render("Back")
+		footerText = styles.ShortcutKey.Render("Enter") + " " + styles.ShortcutDesc.Render("Create Repository") + "  " +
+			styles.ShortcutKey.Render("Esc") + " " + styles.ShortcutDesc.Render("Back")
 	}
 
-	footer := footerStyle.Render(footerText)
+	footer := styles.Footer.Render(footerText)
 	sections = append(sections, footer)
 
 	return strings.Join(sections, "\n")

@@ -91,54 +91,55 @@ func (m OnboardingGitInitScreen) Update(msg tea.Msg) (OnboardingGitInitScreen, t
 
 // View renders the git init screen
 func (m OnboardingGitInitScreen) View() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	var sections []string
 
 	// Header
-	header := headerStyle.Render("Git Repository Setup")
+	header := styles.Header.Render("Git Repository Setup")
 	sections = append(sections, header)
 
 	// Progress
 	progress := fmt.Sprintf("Step %d of %d", m.step, m.totalSteps)
-	sections = append(sections, metadataStyle.Render(progress))
+	sections = append(sections, styles.Metadata.Render(progress))
 
 	sections = append(sections, "")
 
 	// Status
 	if m.isGitRepo {
-		status := statusOkStyle.Render("✓") + " " +
-			lipgloss.NewStyle().Foreground(colorText).Render("Git repository detected")
+		status := styles.StatusOk.Render("✓") + " " +
+			lipgloss.NewStyle().Foreground(styles.ColorText).Render("Git repository detected")
 		sections = append(sections, status)
 
 		// Check for remote
 		if !m.hasRemote {
-			remoteStatus := statusWarningStyle.Render("!") + " " +
-				lipgloss.NewStyle().Foreground(colorText).Render("No remote configured")
+			remoteStatus := styles.StatusWarning.Render("!") + " " +
+				lipgloss.NewStyle().Foreground(styles.ColorText).Render("No remote configured")
 			sections = append(sections, remoteStatus)
 			sections = append(sections, "")
-			sections = append(sections, lipgloss.NewStyle().Foreground(colorMuted).Render(
+			sections = append(sections, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(
 				"Your repository doesn't have a remote origin.\n"+
 				"You can configure GitHub integration in the next step."))
 		} else {
 			sections = append(sections, "")
-			sections = append(sections, lipgloss.NewStyle().Foreground(colorMuted).Render(
+			sections = append(sections, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(
 				"Your workspace is already a git repository with remote. You're all set!"))
 		}
 	} else if m.initComplete {
-		status := statusOkStyle.Render("✓") + " " +
-			lipgloss.NewStyle().Foreground(colorText).Render("Git repository initialized")
+		status := styles.StatusOk.Render("✓") + " " +
+			lipgloss.NewStyle().Foreground(styles.ColorText).Render("Git repository initialized")
 		sections = append(sections, status)
 	} else {
-		status := statusWarningStyle.Render("!") + " " +
-			lipgloss.NewStyle().Foreground(colorText).Render("No git repository found")
+		status := styles.StatusWarning.Render("!") + " " +
+			lipgloss.NewStyle().Foreground(styles.ColorText).Render("No git repository found")
 		sections = append(sections, status)
 		sections = append(sections, "")
-		sections = append(sections, lipgloss.NewStyle().Foreground(colorMuted).Render(
+		sections = append(sections, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(
 			"GitMind works best with git repositories. Would you like to initialize one now?"))
 	}
 
 	if m.error != "" {
 		sections = append(sections, "")
-		sections = append(sections, statusErrorStyle.Render("Error: "+m.error))
+		sections = append(sections, styles.StatusError.Render("Error: "+m.error))
 	}
 
 	sections = append(sections, "")
@@ -147,14 +148,14 @@ func (m OnboardingGitInitScreen) View() string {
 	// Footer
 	footerText := ""
 	if m.isGitRepo || m.initComplete {
-		footerText = shortcutKeyStyle.Render("Enter") + " " + shortcutDescStyle.Render("Continue")
+		footerText = styles.ShortcutKey.Render("Enter") + " " + styles.ShortcutDesc.Render("Continue")
 	} else {
-		footerText = shortcutKeyStyle.Render("Enter") + " " + shortcutDescStyle.Render("Initialize") + "  " +
-			shortcutKeyStyle.Render("S") + " " + shortcutDescStyle.Render("Skip")
+		footerText = styles.ShortcutKey.Render("Enter") + " " + styles.ShortcutDesc.Render("Initialize") + "  " +
+			styles.ShortcutKey.Render("S") + " " + styles.ShortcutDesc.Render("Skip")
 	}
-	footerText += "  " + shortcutKeyStyle.Render("←") + " " + shortcutDescStyle.Render("Back")
+	footerText += "  " + styles.ShortcutKey.Render("←") + " " + styles.ShortcutDesc.Render("Back")
 
-	footer := footerStyle.Render(footerText)
+	footer := styles.Footer.Render(footerText)
 	sections = append(sections, footer)
 
 	return strings.Join(sections, "\n")

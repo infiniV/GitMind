@@ -428,6 +428,9 @@ func runDashboard() error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
+	// Initialize theme from config
+	ui.SetGlobalTheme(cfg.UI.Theme)
+
 	// Check if API key is configured
 	if cfg.AI.APIKey == "" {
 		ui.PrintWarning("No API key configured")
@@ -474,6 +477,9 @@ func runConfig() error {
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
+
+	// Initialize theme from config
+	ui.SetGlobalTheme(cfg.UI.Theme)
 
 	// API Provider
 	fmt.Println("AI Provider:")
@@ -575,6 +581,9 @@ func runOnboard() error {
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
+
+	// Initialize theme from config
+	ui.SetGlobalTheme(cfg.UI.Theme)
 
 	// Create git operations
 	gitOps := git.NewExecOperations()

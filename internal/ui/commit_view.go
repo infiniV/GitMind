@@ -150,9 +150,11 @@ func (m CommitViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // View renders the UI.
 func (m CommitViewModel) View() string {
+	styles := GetGlobalThemeManager().GetStyles()
+
 	if m.err != nil {
 		return lipgloss.NewStyle().
-			Foreground(colorError).
+			Foreground(styles.ColorError).
 			Bold(true).
 			Render(fmt.Sprintf("ERROR: %v\n", m.err))
 	}
@@ -160,7 +162,7 @@ func (m CommitViewModel) View() string {
 	var sections []string
 
 	// Header
-	header := headerStyle.Render("GitMind - Commit Assistant")
+	header := styles.Header.Render("GitMind - Commit Assistant")
 	sections = append(sections, header)
 
 	// Repository info
@@ -169,8 +171,8 @@ func (m CommitViewModel) View() string {
 
 	// Warning if no remote
 	if !m.repo.HasRemote() {
-		warning := warningStyle.Render("[WARNING]") + " " +
-			lipgloss.NewStyle().Foreground(colorMuted).Render(
+		warning := styles.Warning.Render("[WARNING]") + " " +
+			lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(
 				"No remote configured. Use 'git remote add origin <url>' to add one.")
 		sections = append(sections, warning)
 	}
@@ -197,23 +199,25 @@ func (m CommitViewModel) View() string {
 }
 
 func (m CommitViewModel) renderRepoInfo() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
 
-	lines = append(lines, sectionTitleStyle.Render("Repository"))
+	lines = append(lines, styles.SectionTitle.Render("Repository"))
 
-	pathLine := repoLabelStyle.Render("Path:") + " " + repoValueStyle.Render(m.repo.Path())
+	pathLine := styles.RepoLabel.Render("Path:") + " " + styles.RepoValue.Render(m.repo.Path())
 	lines = append(lines, pathLine)
 
-	branchLine := repoLabelStyle.Render("Branch:") + " " + repoValueStyle.Render(m.repo.CurrentBranch())
+	branchLine := styles.RepoLabel.Render("Branch:") + " " + styles.RepoValue.Render(m.repo.CurrentBranch())
 	lines = append(lines, branchLine)
 
-	changesLine := repoLabelStyle.Render("Changes:") + " " + repoValueStyle.Render(m.repo.ChangeSummary())
+	changesLine := styles.RepoLabel.Render("Changes:") + " " + styles.RepoValue.Render(m.repo.ChangeSummary())
 	lines = append(lines, changesLine)
 
 	return strings.Join(lines, "\n")
 }
 
 func (m CommitViewModel) renderCommitMessage() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	var content string
 
 	if m.decision.SuggestedMessage() != nil {
@@ -222,15 +226,15 @@ func (m CommitViewModel) renderCommitMessage() string {
 		content = "No message generated"
 	}
 
-	title := sectionTitleStyle.Render("Suggested Commit Message")
+	title := styles.SectionTitle.Render("Suggested Commit Message")
 
 	// Show AI analysis reasoning
 	var reasoning string
 	if m.decision.Reasoning() != "" {
-		reasoning = descriptionStyle.Render("AI Analysis: " + m.decision.Reasoning())
+		reasoning = styles.Description.Render("AI Analysis: " + m.decision.Reasoning())
 	}
 
-	box := commitBoxStyle.Render(content)
+	box := styles.CommitBox.Render(content)
 
 	if reasoning != "" {
 		return title + "\n" + box + "\n" + reasoning
@@ -239,9 +243,10 @@ func (m CommitViewModel) renderCommitMessage() string {
 }
 
 func (m CommitViewModel) renderOptions() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
 
-	title := sectionTitleStyle.Render("Actions")
+	title := styles.SectionTitle.Render("Actions")
 	lines = append(lines, title)
 	lines = append(lines, "") // Empty line
 
@@ -255,6 +260,7 @@ func (m CommitViewModel) renderOptions() string {
 }
 
 func (m CommitViewModel) renderOption(index int, option CommitOption) string {
+	styles := GetGlobalThemeManager().GetStyles()
 	isSelected := index == m.selectedIndex
 
 	// Build option content
@@ -264,9 +270,9 @@ func (m CommitViewModel) renderOption(index int, option CommitOption) string {
 	number := fmt.Sprintf("%d.", index+1)
 	label := fmt.Sprintf("%s %s", number, option.Label)
 	if isSelected {
-		content = append(content, optionLabelStyle.Render(label))
+		content = append(content, styles.OptionLabel.Render(label))
 	} else {
-		content = append(content, optionNormalStyle.Render(label))
+		content = append(content, styles.OptionNormal.Render(label))
 	}
 
 	// Confidence badge on same line
@@ -276,7 +282,7 @@ func (m CommitViewModel) renderOption(index int, option CommitOption) string {
 	// Description (indented)
 	if option.Description != "" {
 		wrapped := wrapText(option.Description, 70)
-		desc := optionDescStyle.Render(wrapped)
+		desc := styles.OptionDesc.Render(wrapped)
 		content = append(content, desc)
 	}
 
@@ -286,32 +292,33 @@ func (m CommitViewModel) renderOption(index int, option CommitOption) string {
 	// Wrap in box style
 	var boxStyle lipgloss.Style
 	if isSelected {
-		boxStyle = selectedOptionBoxStyle
+		boxStyle = styles.SelectedOptionBox
 	} else {
-		boxStyle = normalOptionBoxStyle
+		boxStyle = styles.NormalOptionBox
 	}
 
 	return boxStyle.Render(optionContent)
 }
 
 func (m CommitViewModel) renderFooter() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
 
 	// Keyboard shortcuts
 	shortcuts := []string{
-		shortcutKeyStyle.Render("↑/↓") + " " + shortcutDescStyle.Render("Navigate"),
-		shortcutKeyStyle.Render("Enter") + " " + shortcutDescStyle.Render("Confirm"),
-		shortcutKeyStyle.Render("Esc") + " " + shortcutDescStyle.Render("Cancel"),
+		styles.ShortcutKey.Render("↑/↓") + " " + styles.ShortcutDesc.Render("Navigate"),
+		styles.ShortcutKey.Render("Enter") + " " + styles.ShortcutDesc.Render("Confirm"),
+		styles.ShortcutKey.Render("Esc") + " " + styles.ShortcutDesc.Render("Cancel"),
 	}
 	shortcutLine := strings.Join(shortcuts, "  ")
 	lines = append(lines, shortcutLine)
 
 	// Metadata
-	metadata := metadataStyle.Render(fmt.Sprintf("Model: %s  |  Tokens: %d",
+	metadata := styles.Metadata.Render(fmt.Sprintf("Model: %s  |  Tokens: %d",
 		m.model, m.tokensUsed))
 	lines = append(lines, metadata)
 
-	return footerStyle.Render(strings.Join(lines, "\n"))
+	return styles.Footer.Render(strings.Join(lines, "\n"))
 }
 
 // GetSelectedOption returns the currently selected option as a domain.Alternative.

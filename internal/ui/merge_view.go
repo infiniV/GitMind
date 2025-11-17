@@ -112,9 +112,10 @@ func (m MergeViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // View renders the UI.
 func (m MergeViewModel) View() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	if m.err != nil {
 		return lipgloss.NewStyle().
-			Foreground(colorError).
+			Foreground(styles.ColorError).
 			Bold(true).
 			Render(fmt.Sprintf("ERROR: %v\n", m.err))
 	}
@@ -122,7 +123,7 @@ func (m MergeViewModel) View() string {
 	var sections []string
 
 	// Header
-	header := headerStyle.Render("GitMind - Merge Assistant")
+	header := styles.Header.Render("GitMind - Merge Assistant")
 	sections = append(sections, header)
 
 	// Merge info
@@ -131,8 +132,8 @@ func (m MergeViewModel) View() string {
 
 	// Conflict warning
 	if !m.analysis.CanMerge {
-		warning := warningStyle.Render("[WARNING]") + " " +
-			lipgloss.NewStyle().Foreground(colorError).Render(
+		warning := styles.Warning.Render("[WARNING]") + " " +
+			lipgloss.NewStyle().Foreground(styles.ColorError).Render(
 				"Merge conflicts detected! Manual resolution required.")
 		sections = append(sections, warning)
 
@@ -165,26 +166,27 @@ func (m MergeViewModel) View() string {
 }
 
 func (m MergeViewModel) renderMergeInfo() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
 
 	// Source and target branches
-	branchLine := repoLabelStyle.Render("Merge:") + " " +
-		lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render(m.analysis.SourceBranchInfo.Name()) +
-		lipgloss.NewStyle().Foreground(colorMuted).Render(" → ") +
-		lipgloss.NewStyle().Foreground(colorSuccess).Bold(true).Render(m.analysis.TargetBranch)
+	branchLine := styles.RepoLabel.Render("Merge:") + " " +
+		lipgloss.NewStyle().Foreground(styles.ColorPrimary).Bold(true).Render(m.analysis.SourceBranchInfo.Name()) +
+		lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(" → ") +
+		lipgloss.NewStyle().Foreground(styles.ColorSuccess).Bold(true).Render(m.analysis.TargetBranch)
 	lines = append(lines, branchLine)
 
 	// Commit count
-	commitCount := repoLabelStyle.Render("Commits:") + " " +
-		repoValueStyle.Render(fmt.Sprintf("%d", m.analysis.CommitCount))
+	commitCount := styles.RepoLabel.Render("Commits:") + " " +
+		styles.RepoValue.Render(fmt.Sprintf("%d", m.analysis.CommitCount))
 	lines = append(lines, commitCount)
 
 	// Status
-	status := repoLabelStyle.Render("Status:") + " "
+	status := styles.RepoLabel.Render("Status:") + " "
 	if m.analysis.CanMerge {
-		status += lipgloss.NewStyle().Foreground(colorSuccess).Render("✓ Ready to merge")
+		status += lipgloss.NewStyle().Foreground(styles.ColorSuccess).Render("✓ Ready to merge")
 	} else {
-		status += lipgloss.NewStyle().Foreground(colorError).Render("✗ Conflicts detected")
+		status += lipgloss.NewStyle().Foreground(styles.ColorError).Render("✗ Conflicts detected")
 	}
 	lines = append(lines, status)
 
@@ -192,28 +194,30 @@ func (m MergeViewModel) renderMergeInfo() string {
 }
 
 func (m MergeViewModel) renderConflicts() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	if len(m.analysis.Conflicts) == 0 {
 		return ""
 	}
 
 	var lines []string
-	lines = append(lines, sectionTitleStyle.Render("Conflicts:"))
+	lines = append(lines, styles.SectionTitle.Render("Conflicts:"))
 
 	for i, conflict := range m.analysis.Conflicts {
 		if i >= 5 { // Limit to 5 conflicts
-			lines = append(lines, lipgloss.NewStyle().Foreground(colorMuted).Render(
+			lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(
 				fmt.Sprintf("  ... and %d more", len(m.analysis.Conflicts)-5)))
 			break
 		}
-		lines = append(lines, lipgloss.NewStyle().Foreground(colorError).Render("  • "+conflict))
+		lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorError).Render("  • "+conflict))
 	}
 
 	return strings.Join(lines, "\n")
 }
 
 func (m MergeViewModel) renderCommits() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
-	lines = append(lines, sectionTitleStyle.Render("Commits to merge:"))
+	lines = append(lines, styles.SectionTitle.Render("Commits to merge:"))
 
 	maxCommits := len(m.analysis.Commits)
 	if maxCommits > 5 {
@@ -222,14 +226,14 @@ func (m MergeViewModel) renderCommits() string {
 
 	for i := 0; i < maxCommits; i++ {
 		commit := m.analysis.Commits[i]
-		commitLine := lipgloss.NewStyle().Foreground(colorMuted).Render("  • ") +
-			lipgloss.NewStyle().Foreground(colorPrimary).Render(commit.Hash[:7]) + " " +
-			repoValueStyle.Render(commit.Message)
+		commitLine := lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("  • ") +
+			lipgloss.NewStyle().Foreground(styles.ColorPrimary).Render(commit.Hash[:7]) + " " +
+			styles.RepoValue.Render(commit.Message)
 		lines = append(lines, commitLine)
 	}
 
 	if len(m.analysis.Commits) > maxCommits {
-		lines = append(lines, lipgloss.NewStyle().Foreground(colorMuted).Render(
+		lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(
 			fmt.Sprintf("  ... and %d more commits", len(m.analysis.Commits)-maxCommits)))
 	}
 
@@ -237,55 +241,58 @@ func (m MergeViewModel) renderCommits() string {
 }
 
 func (m MergeViewModel) renderMergeMessage() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	if m.analysis.MergeMessage == nil {
 		return ""
 	}
 
 	var lines []string
-	lines = append(lines, sectionTitleStyle.Render("Merge message:"))
+	lines = append(lines, styles.SectionTitle.Render("Merge message:"))
 
 	messageContent := m.analysis.MergeMessage.FullMessage()
-	messageBox := commitBoxStyle.Render(messageContent)
+	messageBox := styles.CommitBox.Render(messageContent)
 	lines = append(lines, messageBox)
 
 	return strings.Join(lines, "\n")
 }
 
 func (m MergeViewModel) renderReasoning() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	if m.analysis.Reasoning == "" {
 		return ""
 	}
 
-	reasoning := descriptionStyle.Render("💡 " + m.analysis.Reasoning)
+	reasoning := styles.Description.Render("💡 " + m.analysis.Reasoning)
 	return reasoning
 }
 
 func (m MergeViewModel) renderStrategies() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
-	lines = append(lines, sectionTitleStyle.Render("Select merge strategy:"))
+	lines = append(lines, styles.SectionTitle.Render("Select merge strategy:"))
 
 	for i, strategy := range m.strategies {
 		cursor := "  "
 		if i == m.selectedIndex {
-			cursor = optionCursorStyle.Render("▶ ")
+			cursor = styles.OptionCursor.Render("▶ ")
 		}
 
 		label := strategy.Label
 		if strategy.Recommended {
-			label += lipgloss.NewStyle().Foreground(colorSuccess).Render(" (recommended)")
+			label += lipgloss.NewStyle().Foreground(styles.ColorSuccess).Render(" (recommended)")
 		}
 
 		if i == m.selectedIndex {
-			label = optionSelectedStyle.Render(label)
+			label = styles.OptionSelected.Render(label)
 		} else {
-			label = optionNormalStyle.Render(label)
+			label = styles.OptionNormal.Render(label)
 		}
 
 		line := cursor + label
 		lines = append(lines, line)
 
 		// Add description
-		desc := descriptionStyle.Render(strategy.Description)
+		desc := styles.Description.Render(strategy.Description)
 		lines = append(lines, desc)
 	}
 
@@ -293,17 +300,18 @@ func (m MergeViewModel) renderStrategies() string {
 }
 
 func (m MergeViewModel) renderFooter() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	shortcuts := []string{
-		shortcutKeyStyle.Render("↑/k") + " " + shortcutDescStyle.Render("up"),
-		shortcutKeyStyle.Render("↓/j") + " " + shortcutDescStyle.Render("down"),
-		shortcutKeyStyle.Render("enter") + " " + shortcutDescStyle.Render("confirm"),
-		shortcutKeyStyle.Render("esc") + " " + shortcutDescStyle.Render("cancel"),
+		styles.ShortcutKey.Render("↑/k") + " " + styles.ShortcutDesc.Render("up"),
+		styles.ShortcutKey.Render("↓/j") + " " + styles.ShortcutDesc.Render("down"),
+		styles.ShortcutKey.Render("enter") + " " + styles.ShortcutDesc.Render("confirm"),
+		styles.ShortcutKey.Render("esc") + " " + styles.ShortcutDesc.Render("cancel"),
 	}
 
-	footer := footerStyle.Render(strings.Join(shortcuts, "  •  "))
+	footer := styles.Footer.Render(strings.Join(shortcuts, "  •  "))
 
 	// Add metadata
-	metadata := metadataStyle.Render(fmt.Sprintf("Model: %s  •  Tokens: %d",
+	metadata := styles.Metadata.Render(fmt.Sprintf("Model: %s  •  Tokens: %d",
 		m.analysis.Model, m.analysis.TokensUsed))
 
 	return footer + "\n" + metadata

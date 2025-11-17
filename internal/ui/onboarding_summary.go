@@ -68,20 +68,21 @@ func (m OnboardingSummaryScreen) Update(msg tea.Msg) (OnboardingSummaryScreen, t
 
 // View renders the summary screen
 func (m OnboardingSummaryScreen) View() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	var sections []string
 
 	// Header
-	header := headerStyle.Render("Configuration Summary")
+	header := styles.Header.Render("Configuration Summary")
 	sections = append(sections, header)
 
 	// Progress
 	progress := fmt.Sprintf("Step %d of %d", m.step, m.totalSteps)
-	sections = append(sections, metadataStyle.Render(progress))
+	sections = append(sections, styles.Metadata.Render(progress))
 
 	sections = append(sections, "")
 
 	// Intro
-	intro := lipgloss.NewStyle().Foreground(colorText).Render(
+	intro := lipgloss.NewStyle().Foreground(styles.ColorText).Render(
 		"Review your configuration before saving:")
 	sections = append(sections, intro)
 
@@ -90,7 +91,7 @@ func (m OnboardingSummaryScreen) View() string {
 	sections = append(sections, "")
 
 	// Git Configuration
-	sections = append(sections, sectionHeaderStyle.Render("Git Configuration"))
+	sections = append(sections, getSectionHeaderStyle().Render("Git Configuration"))
 	sections = append(sections, "")
 	sections = append(sections, m.renderKeyValue("Main Branch", m.config.Git.MainBranch))
 	sections = append(sections, m.renderKeyValue("Protected Branches", strings.Join(m.config.Git.ProtectedBranches, ", ")))
@@ -100,21 +101,21 @@ func (m OnboardingSummaryScreen) View() string {
 	sections = append(sections, "")
 
 	// GitHub Configuration
-	sections = append(sections, sectionHeaderStyle.Render("GitHub Integration"))
+	sections = append(sections, getSectionHeaderStyle().Render("GitHub Integration"))
 	sections = append(sections, "")
 	if m.config.GitHub.Enabled {
-		sections = append(sections, m.renderKeyValue("Enabled", statusOkStyle.Render("Yes")))
+		sections = append(sections, m.renderKeyValue("Enabled", styles.StatusOk.Render("Yes")))
 		sections = append(sections, m.renderKeyValue("Default Visibility", m.config.GitHub.DefaultVisibility))
 		sections = append(sections, m.renderKeyValue("Default License", m.config.GitHub.DefaultLicense))
 		sections = append(sections, m.renderKeyValue("Default .gitignore", m.config.GitHub.DefaultGitIgnore))
 	} else {
-		sections = append(sections, m.renderKeyValue("Enabled", statusWarningStyle.Render("No")))
+		sections = append(sections, m.renderKeyValue("Enabled", styles.StatusWarning.Render("No")))
 	}
 
 	sections = append(sections, "")
 
 	// Commit Configuration
-	sections = append(sections, sectionHeaderStyle.Render("Commit Conventions"))
+	sections = append(sections, getSectionHeaderStyle().Render("Commit Conventions"))
 	sections = append(sections, "")
 	sections = append(sections, m.renderKeyValue("Convention", m.capitalizeFirst(m.config.Commits.Convention)))
 	switch m.config.Commits.Convention {
@@ -129,7 +130,7 @@ func (m OnboardingSummaryScreen) View() string {
 	sections = append(sections, "")
 
 	// Naming Configuration
-	sections = append(sections, sectionHeaderStyle.Render("Branch Naming"))
+	sections = append(sections, getSectionHeaderStyle().Render("Branch Naming"))
 	sections = append(sections, "")
 	sections = append(sections, m.renderKeyValue("Enforce Patterns", m.boolToString(m.config.Naming.Enforce)))
 	if m.config.Naming.Enforce {
@@ -140,7 +141,7 @@ func (m OnboardingSummaryScreen) View() string {
 	sections = append(sections, "")
 
 	// AI Configuration
-	sections = append(sections, sectionHeaderStyle.Render("AI Provider"))
+	sections = append(sections, getSectionHeaderStyle().Render("AI Provider"))
 	sections = append(sections, "")
 	sections = append(sections, m.renderKeyValue("Provider", m.capitalizeFirst(m.config.AI.Provider)))
 	sections = append(sections, m.renderKeyValue("API Key", m.maskAPIKey(m.config.AI.APIKey)))
@@ -166,9 +167,9 @@ func (m OnboardingSummaryScreen) View() string {
 	sections = append(sections, renderSeparator(70))
 
 	// Footer
-	footer := footerStyle.Render(
-		shortcutKeyStyle.Render("Tab/←→")+" "+shortcutDescStyle.Render("Navigate")+"  "+
-			shortcutKeyStyle.Render("Enter")+" "+shortcutDescStyle.Render("Confirm"))
+	footer := styles.Footer.Render(
+		styles.ShortcutKey.Render("Tab/←→")+" "+styles.ShortcutDesc.Render("Navigate")+"  "+
+			styles.ShortcutKey.Render("Enter")+" "+styles.ShortcutDesc.Render("Confirm"))
 	sections = append(sections, footer)
 
 	return strings.Join(sections, "\n")
@@ -176,17 +177,19 @@ func (m OnboardingSummaryScreen) View() string {
 
 // Helper methods
 func (m OnboardingSummaryScreen) renderKeyValue(key, value string) string {
-	keyStyle := lipgloss.NewStyle().Foreground(colorText).Width(20).Bold(true)
-	valueStyle := lipgloss.NewStyle().Foreground(colorMuted)
+	styles := GetGlobalThemeManager().GetStyles()
+	keyStyle := lipgloss.NewStyle().Foreground(styles.ColorText).Width(20).Bold(true)
+	valueStyle := lipgloss.NewStyle().Foreground(styles.ColorMuted)
 
 	return "  " + keyStyle.Render(key+":") + " " + valueStyle.Render(value)
 }
 
 func (m OnboardingSummaryScreen) boolToString(b bool) string {
+	styles := GetGlobalThemeManager().GetStyles()
 	if b {
-		return statusOkStyle.Render("Yes")
+		return styles.StatusOk.Render("Yes")
 	}
-	return statusWarningStyle.Render("No")
+	return styles.StatusWarning.Render("No")
 }
 
 func (m OnboardingSummaryScreen) capitalizeFirst(s string) string {
@@ -197,8 +200,9 @@ func (m OnboardingSummaryScreen) capitalizeFirst(s string) string {
 }
 
 func (m OnboardingSummaryScreen) maskAPIKey(key string) string {
+	styles := GetGlobalThemeManager().GetStyles()
 	if len(key) == 0 {
-		return statusErrorStyle.Render("Not set")
+		return styles.StatusError.Render("Not set")
 	}
 	if len(key) <= 8 {
 		return strings.Repeat("*", len(key))
@@ -206,9 +210,11 @@ func (m OnboardingSummaryScreen) maskAPIKey(key string) string {
 	return key[:4] + strings.Repeat("*", len(key)-8) + key[len(key)-4:]
 }
 
-var sectionHeaderStyle = lipgloss.NewStyle().
-	Foreground(colorPrimary).
-	Bold(true)
+func getSectionHeaderStyle() lipgloss.Style {
+	return lipgloss.NewStyle().
+		Foreground(GetGlobalThemeManager().GetStyles().ColorPrimary).
+		Bold(true)
+}
 
 // ShouldSave returns true if user wants to save
 func (m OnboardingSummaryScreen) ShouldSave() bool {

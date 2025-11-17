@@ -202,20 +202,21 @@ func (m *OnboardingBranchesScreen) saveToConfig() {
 
 // View renders the branches screen
 func (m OnboardingBranchesScreen) View() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	var sections []string
 
 	// Header
-	header := headerStyle.Render("Branch Configuration")
+	header := styles.Header.Render("Branch Configuration")
 	sections = append(sections, header)
 
 	// Progress
 	progress := fmt.Sprintf("Step %d of %d", m.step, m.totalSteps)
-	sections = append(sections, metadataStyle.Render(progress))
+	sections = append(sections, styles.Metadata.Render(progress))
 
 	sections = append(sections, "")
 
 	// Description
-	desc := lipgloss.NewStyle().Foreground(colorMuted).Render(
+	desc := lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(
 		"Configure your branch preferences and protected branches.")
 	sections = append(sections, desc)
 
@@ -244,7 +245,7 @@ func (m OnboardingBranchesScreen) View() string {
 	sections = append(sections, "")
 
 	// Options
-	sections = append(sections, formLabelStyle.Render("Git Workflow Options:"))
+	sections = append(sections, styles.FormLabel.Render("Git Workflow Options:"))
 	m.autoPush.Focused = (m.focusedField == 3)
 	sections = append(sections, "  "+m.autoPush.View())
 	sections = append(sections, HelpText{Text: "Automatically push commits to remote after creating them"}.View())
@@ -264,10 +265,10 @@ func (m OnboardingBranchesScreen) View() string {
 	sections = append(sections, renderSeparator(70))
 
 	// Footer
-	footer := footerStyle.Render(
-		shortcutKeyStyle.Render("Tab/↑↓")+" "+shortcutDescStyle.Render("Navigate")+"  "+
-			shortcutKeyStyle.Render("Space")+" "+shortcutDescStyle.Render("Toggle")+"  "+
-			shortcutKeyStyle.Render("←")+" "+shortcutDescStyle.Render("Back"))
+	footer := styles.Footer.Render(
+		styles.ShortcutKey.Render("Tab/↑↓")+" "+styles.ShortcutDesc.Render("Navigate")+"  "+
+			styles.ShortcutKey.Render("Space")+" "+styles.ShortcutDesc.Render("Toggle")+"  "+
+			styles.ShortcutKey.Render("←")+" "+styles.ShortcutDesc.Render("Back"))
 	sections = append(sections, footer)
 
 	return strings.Join(sections, "\n")

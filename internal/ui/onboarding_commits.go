@@ -253,20 +253,21 @@ func (m *OnboardingCommitsScreen) saveToConfig() {
 
 // View renders the commits screen
 func (m OnboardingCommitsScreen) View() string {
+	styles := GetGlobalThemeManager().GetStyles()
 	var sections []string
 
 	// Header
-	header := headerStyle.Render("Commit Conventions")
+	header := styles.Header.Render("Commit Conventions")
 	sections = append(sections, header)
 
 	// Progress
 	progress := fmt.Sprintf("Step %d of %d", m.step, m.totalSteps)
-	sections = append(sections, metadataStyle.Render(progress))
+	sections = append(sections, styles.Metadata.Render(progress))
 
 	sections = append(sections, "")
 
 	// Description
-	desc := lipgloss.NewStyle().Foreground(colorMuted).Render(
+	desc := lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(
 		"Choose how you want to format commit messages.")
 	sections = append(sections, desc)
 
@@ -287,7 +288,7 @@ func (m OnboardingCommitsScreen) View() string {
 		sections = append(sections, "")
 
 		// Options
-		sections = append(sections, formLabelStyle.Render("Options:"))
+		sections = append(sections, styles.FormLabel.Render("Options:"))
 		m.requireScope.Focused = (m.focusedField == 2)
 		sections = append(sections, "  "+m.requireScope.View())
 		sections = append(sections, HelpText{Text: "Example: feat(api): ... instead of feat: ..."}.View())
@@ -307,7 +308,7 @@ func (m OnboardingCommitsScreen) View() string {
 
 	case 2: // None
 		info := lipgloss.NewStyle().
-			Foreground(colorMuted).
+			Foreground(styles.ColorMuted).
 			Padding(1, 2).
 			Render("No commit format restrictions. You can write commit messages freely.")
 		sections = append(sections, info)
@@ -318,12 +319,12 @@ func (m OnboardingCommitsScreen) View() string {
 	sections = append(sections, "")
 
 	// Preview
-	sections = append(sections, formLabelStyle.Render("Preview Example:"))
+	sections = append(sections, styles.FormLabel.Render("Preview Example:"))
 	previewBox := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorMuted).
+		BorderForeground(styles.ColorMuted).
 		Padding(0, 1).
-		Foreground(colorPrimary).
+		Foreground(styles.ColorPrimary).
 		Width(66).
 		Render(m.previewExample)
 	sections = append(sections, previewBox)
@@ -339,10 +340,10 @@ func (m OnboardingCommitsScreen) View() string {
 	sections = append(sections, renderSeparator(70))
 
 	// Footer
-	footer := footerStyle.Render(
-		shortcutKeyStyle.Render("Tab/↑↓")+" "+shortcutDescStyle.Render("Navigate")+"  "+
-			shortcutKeyStyle.Render("Space/←→")+" "+shortcutDescStyle.Render("Select")+"  "+
-			shortcutKeyStyle.Render("←")+" "+shortcutDescStyle.Render("Back"))
+	footer := styles.Footer.Render(
+		styles.ShortcutKey.Render("Tab/↑↓")+" "+styles.ShortcutDesc.Render("Navigate")+"  "+
+			styles.ShortcutKey.Render("Space/←→")+" "+styles.ShortcutDesc.Render("Select")+"  "+
+			styles.ShortcutKey.Render("←")+" "+styles.ShortcutDesc.Render("Back"))
 	sections = append(sections, footer)
 
 	return strings.Join(sections, "\n")
