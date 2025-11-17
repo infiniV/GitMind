@@ -297,7 +297,7 @@ func (m MergeViewModel) renderFooter() string {
 		shortcutKeyStyle.Render("↑/k") + " " + shortcutDescStyle.Render("up"),
 		shortcutKeyStyle.Render("↓/j") + " " + shortcutDescStyle.Render("down"),
 		shortcutKeyStyle.Render("enter") + " " + shortcutDescStyle.Render("confirm"),
-		shortcutKeyStyle.Render("q/esc") + " " + shortcutDescStyle.Render("cancel"),
+		shortcutKeyStyle.Render("esc") + " " + shortcutDescStyle.Render("cancel"),
 	}
 
 	footer := footerStyle.Render(strings.Join(shortcuts, "  •  "))

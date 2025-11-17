@@ -136,6 +136,7 @@ Dashboard (refresh)
 - Commit/merge views render as full-screen overlays
 - `q`/`esc` quit from dashboard when no submenu active
 - `esc` in views shows confirmation dialog before returning to dashboard
+- Confirmation dialogs render on top of all views (including non-dashboard states)
 
 ### Main Tab Navigation
 
@@ -488,6 +489,95 @@ All Git commands go through `git.Operations` interface (`internal/adapter/git/op
 ```bash
 go test -v ./internal/domain -run TestDetectBranchType
 go test -v ./internal/usecase -run TestAnalyzeCommit
+```
+
+## Modal Dialogs
+
+GitMind uses centralized modal dialog systems managed by `AppModel` for confirmations and error display.
+
+### Error Modals
+
+**Purpose:** Display error messages from failed operations (analysis, execution) that would otherwise be lost in the TUI.
+
+**State fields in AppModel:**
+```go
+showingError bool
+errorMessage string
+```
+
+**Usage pattern:**
+```go
+if msg.err != nil {
+    m.showingError = true
+    m.errorMessage = fmt.Sprintf("Operation Failed\n\n%v\n\nPress any key to continue", msg.err)
+    m.state = StateDashboard
+    return m, m.dashboard.Init()
+}
+```
+
+**Key behaviors:**
+- Any keypress dismisses the error modal
+- Error modal has highest priority (renders before confirmation dialogs)
+- Border is colored red to indicate error state
+- Prevents errors from being lost via `PrintError()` which doesn't work in TUI
+
+### Confirmation Dialogs
+
+**Purpose:** Prevent accidental navigation away from workflows (ESC in commit/merge views).
+
+**State fields in AppModel:**
+```go
+showingConfirmation  bool
+confirmationMessage  string
+confirmationCallback func() tea.Cmd
+```
+
+**ESC key handling flow:**
+1. User presses ESC in commit/merge view
+2. `AppModel.Update()` catches ESC key (app_model.go:236)
+3. Sets `showingConfirmation = true` and stores callback
+4. `AppModel.View()` renders confirmation dialog on top of current view
+5. User presses Y to confirm or N/ESC to cancel
+6. Callback executes if confirmed (returns to dashboard)
+
+**Critical rendering pattern:**
+```go
+// app_model.go:646-650
+if m.showingConfirmation {
+    return overlayView + "\n\n" + m.renderConfirmationDialog()
+}
+```
+
+This must happen **after** overlay rendering but **before** the final return, ensuring confirmation dialogs appear in all states (not just dashboard).
+
+**Single-layer key handling:**
+- AppModel exclusively handles ESC key and shows confirmation dialog
+- Child views (CommitViewModel, MergeViewModel) do NOT handle quit keys to avoid conflicts
+- This ensures consistent confirmation behavior across all views
+
+### Common Bug Pattern
+
+**Bug:** Confirmation dialog not showing in non-dashboard states
+
+**Cause:** Early return in View() before checking `showingConfirmation`:
+```go
+// WRONG - returns before confirmation check
+if m.state != StateDashboard {
+    return m.commitView.View()  // Early return!
+}
+// Confirmation check never reached
+```
+
+**Fix:** Store view content, check confirmation, then return:
+```go
+// CORRECT - check confirmation before return
+if m.state != StateDashboard {
+    overlayView = m.commitView.View()
+    if m.showingConfirmation {
+        return overlayView + "\n\n" + m.renderConfirmationDialog()
+    }
+    return overlayView
+}
 ```
 
 ## Important Constraints & Design Decisions
