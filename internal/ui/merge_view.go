@@ -111,8 +111,16 @@ func (m MergeViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.windowHeight = msg.Height
 
 		// Update viewport size on window resize
-		// Match the pane width calculation
-		viewportWidth := (msg.Width / 2) - 8
+		// Match the pane width calculation (48/52 split)
+		totalMargins := 4
+		dividerWidth := 1
+		usableWidth := msg.Width - totalMargins - dividerWidth
+		leftWidth := int(float64(usableWidth) * 0.48)
+		rightWidth := usableWidth - leftWidth
+
+		// Viewport should be nearly as wide as the right pane to allow content to expand
+		// Just subtract small margin for title/padding
+		viewportWidth := rightWidth - 2
 		viewportHeight := msg.Height - 15 // Account for header, footer, etc.
 		if viewportHeight < 5 {
 			viewportHeight = 5
@@ -171,9 +179,23 @@ func (m MergeViewModel) View() string {
 			Render("Initializing merge view...")
 	}
 
-	// Calculate pane widths - more conservative to prevent cutoff
-	leftWidth := (m.windowWidth / 2) - 4
-	rightWidth := (m.windowWidth / 2) - 4
+	// Calculate pane widths with divider space
+	// Use almost all available width, leaving small margins
+	// Left pane: 45%, Right pane: 55% (right needs more for descriptions)
+	totalMargins := 4 // Small margins on edges
+	dividerWidth := 1
+	usableWidth := m.windowWidth - totalMargins - dividerWidth
+
+	leftWidth := int(float64(usableWidth) * 0.48)
+	rightWidth := usableWidth - leftWidth
+
+	// Ensure minimum widths
+	if leftWidth < 50 {
+		leftWidth = 50
+	}
+	if rightWidth < 50 {
+		rightWidth = 50
+	}
 
 	// LEFT PANE: ASCII art, merge info, commits, merge message
 	var leftSections []string
@@ -223,7 +245,22 @@ func (m MergeViewModel) View() string {
 
 	leftPane := lipgloss.NewStyle().
 		Width(leftWidth).
+		MaxWidth(leftWidth).
 		Render(lipgloss.JoinVertical(lipgloss.Left, leftSections...))
+
+	// DIVIDER: Vertical line separator
+	dividerHeight := m.windowHeight - 5 // Account for footer
+	if dividerHeight < 5 {
+		dividerHeight = 5
+	}
+	dividerLines := make([]string, dividerHeight)
+	dividerChar := lipgloss.NewStyle().
+		Foreground(styles.ColorBorder).
+		Render("│")
+	for i := range dividerLines {
+		dividerLines[i] = dividerChar
+	}
+	divider := strings.Join(dividerLines, "\n")
 
 	// RIGHT PANE: Strategy selection with viewport
 	var rightSections []string
@@ -254,13 +291,14 @@ func (m MergeViewModel) View() string {
 
 	rightPane := lipgloss.NewStyle().
 		Width(rightWidth).
+		MaxWidth(rightWidth).
 		Render(lipgloss.JoinVertical(lipgloss.Left, rightSections...))
 
-	// Combine panes horizontally
+	// Combine panes horizontally with divider
 	mainContent := lipgloss.JoinHorizontal(
 		lipgloss.Top,
 		leftPane,
-		"  ", // 2-space gap
+		divider,
 		rightPane,
 	)
 
@@ -354,8 +392,14 @@ func (m MergeViewModel) renderMergeMessage() string {
 	var lines []string
 	lines = append(lines, styles.SectionTitle.Render("Merge message:"))
 
+	// Calculate available width for merge message box
+	usableWidth := m.windowWidth - 4 - 1 // margins and divider
+	leftWidth := int(float64(usableWidth) * 0.48)
+	boxWidth := leftWidth - 4 // Account for box padding/borders
+
 	messageContent := m.analysis.MergeMessage.FullMessage()
-	messageBox := styles.CommitBox.Render(messageContent)
+	wrappedContent := wrapTextMerge(messageContent, boxWidth)
+	messageBox := styles.CommitBox.Render(wrappedContent)
 	lines = append(lines, messageBox)
 
 	return strings.Join(lines, "\n")
@@ -398,11 +442,21 @@ func (m MergeViewModel) renderStrategiesContent() string {
 
 		// Add description with proper wrapping
 		if strategy.Description != "" {
-			// Calculate available width: half window - margins - padding - borders
-			maxWidth := (m.windowWidth / 2) - 12
-			if maxWidth < 30 {
-				maxWidth = 30 // Minimum width
+			// Calculate available width based on right pane width
+			totalMargins := 4
+			dividerWidth := 1
+			usableWidth := m.windowWidth - totalMargins - dividerWidth
+			rightPaneWidth := usableWidth - int(float64(usableWidth)*0.48)
+			if rightPaneWidth < 50 {
+				rightPaneWidth = 50
 			}
+
+			// Account for cursor, padding
+			maxWidth := rightPaneWidth - 10
+			if maxWidth < 30 {
+				maxWidth = 30
+			}
+
 			wrapped := wrapTextMerge(strategy.Description, maxWidth)
 			desc := styles.Description.Render("  " + wrapped)
 			lines = append(lines, desc)

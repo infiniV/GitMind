@@ -46,11 +46,29 @@ func NewCommitViewModel(
 	decision *domain.Decision,
 	tokensUsed int,
 	model string,
+	windowWidth int,
+	windowHeight int,
 ) *CommitViewModel {
 	options := buildOptions(decision)
 
-	// Initialize viewport with default size (will be updated on first WindowSizeMsg)
-	vp := viewport.New(50, 20)
+	// Use provided dimensions or sensible defaults
+	if windowWidth < 80 {
+		windowWidth = 150
+	}
+	if windowHeight < 20 {
+		windowHeight = 40
+	}
+
+	// Calculate viewport size based on window dimensions
+	totalMargins := 4
+	dividerWidth := 1
+	usableWidth := windowWidth - totalMargins - dividerWidth
+	rightWidth := usableWidth - int(float64(usableWidth)*0.48)
+	viewportWidth := rightWidth - 2
+	viewportHeight := windowHeight - 15
+
+	// Initialize viewport with calculated size
+	vp := viewport.New(viewportWidth, viewportHeight)
 
 	m := &CommitViewModel{
 		repo:              repo,
@@ -64,9 +82,9 @@ func NewCommitViewModel(
 		returnToDashboard: false,
 		hasDecision:       false,
 		viewport:          vp,
-		ready:             true, // Set ready immediately
-		windowWidth:       120,  // Default width
-		windowHeight:      30,   // Default height
+		ready:             true,
+		windowWidth:       windowWidth,
+		windowHeight:      windowHeight,
 	}
 
 	// Set initial viewport content
@@ -149,8 +167,16 @@ func (m CommitViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.windowHeight = msg.Height
 
 		// Update viewport size on window resize
-		// Match the pane width calculation
-		viewportWidth := (msg.Width / 2) - 8
+		// Match the pane width calculation (48/52 split)
+		totalMargins := 4
+		dividerWidth := 1
+		usableWidth := msg.Width - totalMargins - dividerWidth
+		leftWidth := int(float64(usableWidth) * 0.48)
+		rightWidth := usableWidth - leftWidth
+
+		// Viewport should be nearly as wide as the right pane to allow content to expand
+		// Just subtract small margin for title/padding
+		viewportWidth := rightWidth - 2
 		viewportHeight := msg.Height - 15 // Account for header, footer, etc.
 		if viewportHeight < 5 {
 			viewportHeight = 5
@@ -210,9 +236,23 @@ func (m CommitViewModel) View() string {
 			Render("Initializing commit view...")
 	}
 
-	// Calculate pane widths - more conservative to prevent cutoff
-	leftWidth := (m.windowWidth / 2) - 4
-	rightWidth := (m.windowWidth / 2) - 4
+	// Calculate pane widths with divider space
+	// Use almost all available width, leaving small margins
+	// Left pane: 48%, Right pane: 52% (balanced for ASCII art and descriptions)
+	totalMargins := 4 // Small margins on edges
+	dividerWidth := 1
+	usableWidth := m.windowWidth - totalMargins - dividerWidth
+
+	leftWidth := int(float64(usableWidth) * 0.48)
+	rightWidth := usableWidth - leftWidth
+
+	// Ensure minimum widths
+	if leftWidth < 60 {
+		leftWidth = 60
+	}
+	if rightWidth < 60 {
+		rightWidth = 60
+	}
 
 	// LEFT PANE: ASCII art, repo info, commit message
 	var leftSections []string
@@ -252,7 +292,22 @@ func (m CommitViewModel) View() string {
 
 	leftPane := lipgloss.NewStyle().
 		Width(leftWidth).
+		MaxWidth(leftWidth).
 		Render(lipgloss.JoinVertical(lipgloss.Left, leftSections...))
+
+	// DIVIDER: Vertical line separator
+	dividerHeight := m.windowHeight - 5 // Account for footer
+	if dividerHeight < 5 {
+		dividerHeight = 5
+	}
+	dividerLines := make([]string, dividerHeight)
+	dividerChar := lipgloss.NewStyle().
+		Foreground(styles.ColorBorder).
+		Render("│")
+	for i := range dividerLines {
+		dividerLines[i] = dividerChar
+	}
+	divider := strings.Join(dividerLines, "\n")
 
 	// RIGHT PANE: Options with viewport
 	var rightSections []string
@@ -276,13 +331,14 @@ func (m CommitViewModel) View() string {
 
 	rightPane := lipgloss.NewStyle().
 		Width(rightWidth).
+		MaxWidth(rightWidth).
 		Render(lipgloss.JoinVertical(lipgloss.Left, rightSections...))
 
-	// Combine panes horizontally
+	// Combine panes horizontally with divider
 	mainContent := lipgloss.JoinHorizontal(
 		lipgloss.Top,
 		leftPane,
-		"  ", // 2-space gap
+		divider,
 		rightPane,
 	)
 
@@ -322,13 +378,23 @@ func (m CommitViewModel) renderCommitMessage() string {
 
 	title := styles.SectionTitle.Render("Suggested Commit Message")
 
-	// Show AI analysis reasoning
+	// Calculate available width for commit box
+	usableWidth := m.windowWidth - 4 - 1 // margins and divider
+	leftWidth := int(float64(usableWidth) * 0.48)
+	boxWidth := leftWidth - 4 // Account for box padding/borders
+
+	// Wrap content to fit in box
+	wrappedContent := wrapText(content, boxWidth)
+
+	box := styles.CommitBox.Render(wrappedContent)
+
+	// Show AI analysis reasoning with wrapping
 	var reasoning string
 	if m.decision.Reasoning() != "" {
-		reasoning = styles.Description.Render("AI Analysis: " + m.decision.Reasoning())
+		reasoningText := "AI Analysis: " + m.decision.Reasoning()
+		wrappedReasoning := wrapText(reasoningText, leftWidth-2)
+		reasoning = styles.Description.Render(wrappedReasoning)
 	}
-
-	box := styles.CommitBox.Render(content)
 
 	if reasoning != "" {
 		return title + "\n" + box + "\n" + reasoning
@@ -388,13 +454,31 @@ func (m CommitViewModel) renderOption(index int, option CommitOption) string {
 	badge := getConfidenceBadge(option.Confidence)
 	content[0] = content[0] + " " + badge
 
-	// Description (wrapped to pane width minus padding)
+	// Calculate right pane width once
+	totalMargins := 4
+	dividerWidth := 1
+	usableWidth := m.windowWidth - totalMargins - dividerWidth
+	rightPaneWidth := usableWidth - int(float64(usableWidth)*0.48)
+	if rightPaneWidth < 50 {
+		rightPaneWidth = 50
+	}
+
+	// Calculate interior width for content (inside the box borders and padding)
+	// Box has: rounded border (2 chars each side) + padding (1 each side) = 6 total
+	interiorWidth := rightPaneWidth - 6
+	if interiorWidth < 40 {
+		interiorWidth = 40
+	}
+
+	// Calculate max width for text wrapping
+	// Account for OptionDesc paddingLeft (2 chars)
+	maxWidth := interiorWidth - 2
+	if maxWidth < 30 {
+		maxWidth = 30
+	}
+
+	// Description (wrapped to fit within the box)
 	if option.Description != "" {
-		// Calculate available width: half window - margins - padding - borders
-		maxWidth := (m.windowWidth / 2) - 12
-		if maxWidth < 30 {
-			maxWidth = 30 // Minimum width
-		}
 		wrapped := wrapText(option.Description, maxWidth)
 		desc := styles.OptionDesc.Render(wrapped)
 		content = append(content, desc)
@@ -402,6 +486,15 @@ func (m CommitViewModel) renderOption(index int, option CommitOption) string {
 
 	// Join content
 	optionContent := strings.Join(content, "\n")
+
+	// Use Place to force content to fill the full interior width
+	placedContent := lipgloss.Place(
+		interiorWidth,
+		lipgloss.Height(optionContent),
+		lipgloss.Left,
+		lipgloss.Top,
+		optionContent,
+	)
 
 	// Wrap in box style
 	var boxStyle lipgloss.Style
@@ -411,7 +504,7 @@ func (m CommitViewModel) renderOption(index int, option CommitOption) string {
 		boxStyle = styles.NormalOptionBox
 	}
 
-	return boxStyle.Render(optionContent)
+	return boxStyle.Render(placedContent)
 }
 
 func (m CommitViewModel) renderFooter() string {
