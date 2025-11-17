@@ -127,9 +127,13 @@ func (m DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Main dashboard navigation
 		switch msg.String() {
-		case "ctrl+c", "q", "esc":
-			m.cancelled = true
-			return m, tea.Quit
+		case "q":
+			// Close any active submenu, or do nothing if at top level
+			if m.activeSubmenu != NoSubmenu {
+				m.activeSubmenu = NoSubmenu
+				m.submenuIndex = 0
+			}
+			return m, nil
 
 		case "up", "k":
 			if m.selectedCard >= 3 {
@@ -242,7 +246,9 @@ func (m DashboardModel) handleSubmenuSelection() (tea.Model, tea.Cmd) {
 			m.action = ActionCommit
 			m.actionParams["conventional"] = m.useConventional
 			m.actionParams["message"] = m.customMessage
-			return m, tea.Quit
+			m.activeSubmenu = NoSubmenu
+			m.submenuIndex = 0
+			return m, nil
 		}
 
 	case MergeOptionsMenu:
@@ -251,7 +257,9 @@ func (m DashboardModel) handleSubmenuSelection() (tea.Model, tea.Cmd) {
 			m.action = ActionMerge
 			m.actionParams["source"] = m.sourceBranch
 			m.actionParams["target"] = m.targetBranch
-			return m, tea.Quit
+			m.activeSubmenu = NoSubmenu
+			m.submenuIndex = 0
+			return m, nil
 		}
 
 	case BranchListMenu:
@@ -259,7 +267,9 @@ func (m DashboardModel) handleSubmenuSelection() (tea.Model, tea.Cmd) {
 			// Switch to selected branch
 			m.action = ActionSwitchBranch
 			m.actionParams["branch"] = m.branches[m.submenuIndex]
-			return m, tea.Quit
+			m.activeSubmenu = NoSubmenu
+			m.submenuIndex = 0
+			return m, nil
 		}
 
 	case QuickStatusMenu, CommitListMenu, HelpMenu:
@@ -338,18 +348,18 @@ func (m DashboardModel) View() string {
 
 // renderTopRow renders the top 3 cards
 func (m DashboardModel) renderTopRow() string {
-	card0 := m.renderCard(0, "🔍 Repository", m.renderRepoStatusCard())
-	card1 := m.renderCard(1, "📝 AI Commit", m.renderCommitCard())
-	card2 := m.renderCard(2, "🔀 AI Merge", m.renderMergeCard())
+	card0 := m.renderCard(0, "REPOSITORY", m.renderRepoStatusCard())
+	card1 := m.renderCard(1, "COMMIT", m.renderCommitCard())
+	card2 := m.renderCard(2, "MERGE", m.renderMergeCard())
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, card0, " ", card1, " ", card2)
 }
 
 // renderBottomRow renders the bottom 3 cards
 func (m DashboardModel) renderBottomRow() string {
-	card3 := m.renderCard(3, "📜 Recent Commits", m.renderCommitsCard())
-	card4 := m.renderCard(4, "🌿 Branches", m.renderBranchesCard())
-	card5 := m.renderCard(5, "⚡ Quick Actions", m.renderActionsCard())
+	card3 := m.renderCard(3, "RECENT COMMITS", m.renderCommitsCard())
+	card4 := m.renderCard(4, "BRANCHES", m.renderBranchesCard())
+	card5 := m.renderCard(5, "QUICK ACTIONS", m.renderActionsCard())
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, card3, " ", card4, " ", card5)
 }
@@ -357,90 +367,120 @@ func (m DashboardModel) renderBottomRow() string {
 // renderCard wraps content in a card with title
 func (m DashboardModel) renderCard(index int, title, content string) string {
 	style := dashboardCardStyle
-	if index == m.selectedCard && m.activeSubmenu == NoSubmenu {
+	isActive := index == m.selectedCard && m.activeSubmenu == NoSubmenu
+	if isActive {
 		style = dashboardCardActiveStyle
 	}
 
-	titleStr := cardTitleStyle.Render(title)
-	contentStr := cardContentStyle.Render(content)
+	// Title at top (no enter symbol)
+	titleLine := cardTitleStyle.Render(title)
 
-	cardContent := lipgloss.JoinVertical(lipgloss.Left, titleStr, contentStr)
-	return style.Render(cardContent)
+	// Content with muted style
+	contentStyle := lipgloss.NewStyle().Foreground(colorMuted)
+	contentStr := contentStyle.Render(content)
+
+	// Build fixed-size interior: title at top, content at bottom with spacing
+	// Use Place to enforce exact dimensions: 36 width x 8 height
+	titleBlock := lipgloss.Place(36, 1, lipgloss.Left, lipgloss.Top, titleLine)
+	contentBlock := lipgloss.Place(36, 4, lipgloss.Left, lipgloss.Bottom, contentStr)
+
+	// Join with 3 blank lines in between to total 8 lines
+	spacer := strings.Repeat("\n", 2)
+	interior := titleBlock + spacer + contentBlock
+
+	return style.Render(interior)
 }
 
 // renderRepoStatusCard renders repository status content
 func (m DashboardModel) renderRepoStatusCard() string {
-	if m.repo == nil {
-		return "Loading..."
-	}
-
 	var lines []string
 
-	// Branch
-	branchLine := fmt.Sprintf("Branch: %s", m.repo.CurrentBranch())
-	if m.branchInfo != nil {
-		branchLine += fmt.Sprintf(" [%s]", m.branchInfo.Type())
+	if m.repo == nil {
+		lines = append(lines, "Loading...")
+		lines = append(lines, "")
+		lines = append(lines, "")
+		lines = append(lines, "")
+		return strings.Join(lines, "\n")
 	}
-	lines = append(lines, branchLine)
 
-	// Changes
-	status := statusOkStyle.Render("✓ Clean")
+	// Branch name (shortened if too long)
+	branch := m.repo.CurrentBranch()
+	if len(branch) > 28 {
+		branch = branch[:25] + "..."
+	}
+	lines = append(lines, branch)
+
+	// Changes status
 	if m.repo.HasChanges() {
-		status = statusWarningStyle.Render(fmt.Sprintf("⚠ %s", m.repo.ChangeSummary()))
-	}
-	lines = append(lines, status)
-
-	// Remote
-	if m.repo.HasRemote() {
-		lines = append(lines, statusInfoStyle.Render("ℹ Remote configured"))
+		lines = append(lines, statusWarningStyle.Render(m.repo.ChangeSummary()))
 	} else {
-		lines = append(lines, statusWarningStyle.Render("⚠ No remote"))
+		lines = append(lines, statusOkStyle.Render("Clean"))
 	}
+
+	// Pad to 4 lines
+	lines = append(lines, "")
+	lines = append(lines, "")
 
 	return strings.Join(lines, "\n")
 }
 
-// renderCommitCard renders AI commit card content
+// renderCommitCard renders commit card content
 func (m DashboardModel) renderCommitCard() string {
-	if m.repo == nil {
-		return "Loading..."
-	}
-
 	var lines []string
 
+	if m.repo == nil {
+		lines = append(lines, "Loading...")
+		lines = append(lines, "")
+		lines = append(lines, "")
+		lines = append(lines, "")
+		return strings.Join(lines, "\n")
+	}
+
 	if m.repo.HasChanges() {
-		lines = append(lines, "Analyze changes")
-		lines = append(lines, "with AI assistance")
+		lines = append(lines, "Analyze changes with")
+		lines = append(lines, "AI assistance")
 		lines = append(lines, "")
-		lines = append(lines, statusInfoStyle.Render("Press Enter"))
+		lines = append(lines, "")
 	} else {
-		lines = append(lines, statusOkStyle.Render("✓ No changes"))
+		lines = append(lines, statusOkStyle.Render("No changes"))
 		lines = append(lines, "")
-		lines = append(lines, "Make changes to")
-		lines = append(lines, "enable AI commit")
+		lines = append(lines, "Make changes first")
+		lines = append(lines, "")
 	}
 
 	return strings.Join(lines, "\n")
 }
 
-// renderMergeCard renders AI merge card content
+// renderMergeCard renders merge card content
 func (m DashboardModel) renderMergeCard() string {
-	if m.branchInfo == nil {
-		return "Loading..."
-	}
-
 	var lines []string
+
+	if m.branchInfo == nil {
+		lines = append(lines, "Loading...")
+		lines = append(lines, "")
+		lines = append(lines, "")
+		lines = append(lines, "")
+		return strings.Join(lines, "\n")
+	}
 
 	if m.branchInfo.Parent() != "" {
-		lines = append(lines, fmt.Sprintf("Merge to: %s", m.branchInfo.Parent()))
-		lines = append(lines, "")
+		parent := m.branchInfo.Parent()
+		if len(parent) > 25 {
+			parent = parent[:22] + "..."
+		}
+		lines = append(lines, fmt.Sprintf("Target: %s", parent))
 		if m.branchInfo.CommitCount() > 0 {
 			lines = append(lines, fmt.Sprintf("%d commits ready", m.branchInfo.CommitCount()))
+		} else {
+			lines = append(lines, "")
 		}
-		lines = append(lines, statusInfoStyle.Render("Press Enter"))
+		lines = append(lines, "")
+		lines = append(lines, "")
 	} else {
 		lines = append(lines, "No parent branch")
 		lines = append(lines, "configured")
+		lines = append(lines, "")
+		lines = append(lines, "")
 	}
 
 	return strings.Join(lines, "\n")
@@ -448,15 +488,24 @@ func (m DashboardModel) renderMergeCard() string {
 
 // renderCommitsCard renders recent commits card content
 func (m DashboardModel) renderCommitsCard() string {
+	var lines []string
+
 	if m.recentCommits == nil {
-		return "Loading..."
+		lines = append(lines, "Loading...")
+		lines = append(lines, "")
+		lines = append(lines, "")
+		lines = append(lines, "")
+		return strings.Join(lines, "\n")
 	}
 
 	if len(m.recentCommits) == 0 {
-		return "No commits yet"
+		lines = append(lines, "No commits yet")
+		lines = append(lines, "")
+		lines = append(lines, "")
+		lines = append(lines, "")
+		return strings.Join(lines, "\n")
 	}
 
-	var lines []string
 	maxCommits := 3
 	if len(m.recentCommits) < maxCommits {
 		maxCommits = len(m.recentCommits)
@@ -476,24 +525,38 @@ func (m DashboardModel) renderCommitsCard() string {
 		lines = append(lines, fmt.Sprintf("... +%d more", len(m.recentCommits)-maxCommits))
 	}
 
+	// Pad to exactly 4 lines
+	for len(lines) < 4 {
+		lines = append(lines, "")
+	}
+
 	return strings.Join(lines, "\n")
 }
 
 // renderBranchesCard renders branches card content
 func (m DashboardModel) renderBranchesCard() string {
+	var lines []string
+
 	if m.branches == nil {
-		return "Loading..."
+		lines = append(lines, "Loading...")
+		lines = append(lines, "")
+		lines = append(lines, "")
+		lines = append(lines, "")
+		return strings.Join(lines, "\n")
 	}
 
 	if len(m.branches) == 0 {
-		return "No branches"
+		lines = append(lines, "No branches")
+		lines = append(lines, "")
+		lines = append(lines, "")
+		lines = append(lines, "")
+		return strings.Join(lines, "\n")
 	}
 
-	var lines []string
 	lines = append(lines, fmt.Sprintf("%d branches", len(m.branches)))
 	lines = append(lines, "")
 
-	maxBranches := 3
+	maxBranches := 2
 	if len(m.branches) < maxBranches {
 		maxBranches = len(m.branches)
 	}
@@ -506,18 +569,21 @@ func (m DashboardModel) renderBranchesCard() string {
 		lines = append(lines, "• "+branch)
 	}
 
+	// Pad to exactly 4 lines
+	for len(lines) < 4 {
+		lines = append(lines, "")
+	}
+
 	return strings.Join(lines, "\n")
 }
 
 // renderActionsCard renders quick actions card content
 func (m DashboardModel) renderActionsCard() string {
 	var lines []string
-	lines = append(lines, "Press Enter for:")
-	lines = append(lines, "• Help & Shortcuts")
-	lines = append(lines, "• Command Guide")
+	lines = append(lines, "Help & Shortcuts")
 	lines = append(lines, "")
 	lines = append(lines, "r - Refresh")
-	lines = append(lines, "q - Quit")
+	lines = append(lines, "")
 
 	return strings.Join(lines, "\n")
 }
@@ -553,7 +619,7 @@ func (m DashboardModel) renderCommitOptionsMenu() string {
 	// Option 0: Conventional commits
 	checkbox := "[ ]"
 	if m.useConventional {
-		checkbox = checkboxStyle.Render("[✓]")
+		checkbox = checkboxStyle.Render("[x]")
 	}
 	opt0 := fmt.Sprintf("%s Conventional commits format", checkbox)
 	if m.submenuIndex == 0 {
@@ -684,7 +750,7 @@ func (m DashboardModel) renderBranchListMenu() string {
 
 			indicator := "  "
 			if isCurrent {
-				indicator = statusOkStyle.Render("✓ ")
+				indicator = statusOkStyle.Render("* ")
 			}
 
 			line := indicator + branch
@@ -767,12 +833,12 @@ func (m DashboardModel) renderHelpMenu() string {
 	lines = append(lines, "")
 
 	lines = append(lines, statusInfoStyle.Render("Cards:"))
-	lines = append(lines, submenuOptionStyle.Render("  🔍 Repository  View current status"))
-	lines = append(lines, submenuOptionStyle.Render("  📝 AI Commit   Analyze & commit changes"))
-	lines = append(lines, submenuOptionStyle.Render("  🔀 AI Merge    Merge to parent branch"))
-	lines = append(lines, submenuOptionStyle.Render("  📜 Commits     Browse commit history"))
-	lines = append(lines, submenuOptionStyle.Render("  🌿 Branches    Switch branches"))
-	lines = append(lines, submenuOptionStyle.Render("  ⚡ Actions     This help menu"))
+	lines = append(lines, submenuOptionStyle.Render("  Repository       View current status"))
+	lines = append(lines, submenuOptionStyle.Render("  Commit           Analyze & commit changes"))
+	lines = append(lines, submenuOptionStyle.Render("  Merge            Merge to parent branch"))
+	lines = append(lines, submenuOptionStyle.Render("  Recent Commits   Browse commit history"))
+	lines = append(lines, submenuOptionStyle.Render("  Branches         Switch branches"))
+	lines = append(lines, submenuOptionStyle.Render("  Quick Actions    This help menu"))
 
 	lines = append(lines, "")
 	lines = append(lines, shortcutDescStyle.Render("Esc: close"))

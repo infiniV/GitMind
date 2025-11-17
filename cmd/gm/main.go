@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
@@ -13,7 +12,6 @@ import (
 	"github.com/yourusername/gitman/internal/adapter/git"
 	"github.com/yourusername/gitman/internal/domain"
 	"github.com/yourusername/gitman/internal/ui"
-	"github.com/yourusername/gitman/internal/usecase"
 )
 
 var (
@@ -55,9 +53,6 @@ commit messages and help you make smart branching decisions.`,
 }
 
 func commitCmd() *cobra.Command {
-	var userPrompt string
-	var useConventional bool
-
 	cmd := &cobra.Command{
 		Use:   "commit",
 		Short: "Analyze changes and create an AI-powered commit",
@@ -65,20 +60,15 @@ func commitCmd() *cobra.Command {
 The AI will suggest commit messages and determine whether to commit directly
 or create a new branch based on the nature of your changes.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runCommit(userPrompt, useConventional)
+			// Launch dashboard which handles commit workflow
+			return runDashboard()
 		},
 	}
-
-	cmd.Flags().StringVarP(&userPrompt, "message", "m", "", "Additional context for the AI")
-	cmd.Flags().BoolVarP(&useConventional, "conventional", "c", false, "Use conventional commit format")
 
 	return cmd
 }
 
 func mergeCmd() *cobra.Command {
-	var sourceBranch string
-	var targetBranch string
-
 	cmd := &cobra.Command{
 		Use:   "merge",
 		Short: "Analyze and execute an AI-powered merge",
@@ -86,12 +76,10 @@ func mergeCmd() *cobra.Command {
 The AI will suggest an appropriate merge strategy (squash, regular, or fast-forward)
 and generate a meaningful merge commit message based on the commits being merged.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runMerge(sourceBranch, targetBranch)
+			// Launch dashboard which handles merge workflow
+			return runDashboard()
 		},
 	}
-
-	cmd.Flags().StringVarP(&sourceBranch, "source", "s", "", "Source branch to merge from (default: current branch)")
-	cmd.Flags().StringVarP(&targetBranch, "target", "t", "", "Target branch to merge into (default: parent branch)")
 
 	return cmd
 }
@@ -109,7 +97,8 @@ func configCmd() *cobra.Command {
 	return cmd
 }
 
-func runCommit(userPrompt string, useConventional bool) error {
+// DEPRECATED: runCommit is no longer used. All commands now launch the unified dashboard/AppModel.
+/* func runCommit(userPrompt string, useConventional bool) error {
 	// Load configuration
 	cfg, err := cfgManager.Load()
 	if err != nil {
@@ -269,8 +258,10 @@ func runCommit(userPrompt string, useConventional bool) error {
 
 	return nil
 }
+*/
 
-func runMerge(sourceBranch, targetBranch string) error {
+// DEPRECATED: runMerge is no longer used. All commands now launch the unified dashboard/AppModel.
+/* func runMerge(sourceBranch, targetBranch string) error {
 	// Load configuration
 	cfg, err := cfgManager.Load()
 	if err != nil {
@@ -388,6 +379,7 @@ func runMerge(sourceBranch, targetBranch string) error {
 
 	return nil
 }
+*/
 
 func runDashboard() error {
 	// Get current directory
@@ -409,54 +401,47 @@ func runDashboard() error {
 		return nil
 	}
 
-	// Create and launch dashboard
-	model := ui.NewDashboardModel(gitOps, cwd)
-	p := tea.NewProgram(model)
-
-	finalModel, err := p.Run()
+	// Load config
+	cfg, err := cfgManager.Load()
 	if err != nil {
-		return fmt.Errorf("dashboard error: %w", err)
+		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	dashModel := finalModel.(ui.DashboardModel)
-
-	if dashModel.IsCancelled() {
-		return nil
+	// Check if API key is configured
+	if cfg.APIKey == "" {
+		ui.PrintWarning("No API key configured")
+		ui.PrintInfo("Run 'gm config' to set up your Cerebras API key")
+		ui.PrintInfo("You can get a free API key at https://cloud.cerebras.ai")
+		return fmt.Errorf("API key not configured")
 	}
 
-	// Handle dashboard actions
-	action := dashModel.GetAction()
-	params := dashModel.GetActionParams()
-
-	switch action {
-	case ui.ActionCommit:
-		// Launch commit workflow with options from dashboard
-		conventional, _ := params["conventional"].(bool)
-		message, _ := params["message"].(string)
-		return runCommit(message, conventional)
-
-	case ui.ActionMerge:
-		// Launch merge workflow with options from dashboard
-		source, _ := params["source"].(string)
-		target, _ := params["target"].(string)
-		return runMerge(source, target)
-
-	case ui.ActionSwitchBranch:
-		// Switch to selected branch
-		branch, _ := params["branch"].(string)
-		if branch != "" {
-			ui.PrintInfo(fmt.Sprintf("Switching to branch: %s", branch))
-			if err := gitOps.CheckoutBranch(ctx, cwd, branch); err != nil {
-				return fmt.Errorf("failed to switch branch: %w", err)
-			}
-			ui.PrintSuccess(fmt.Sprintf("Switched to branch: %s", branch))
-		}
-		return nil
-
-	default:
-		// No action, just return
-		return nil
+	// Create AI provider
+	apiKey, err := domain.NewAPIKey(cfg.APIKey, "cerebras")
+	if err != nil {
+		return fmt.Errorf("invalid API key: %w", err)
 	}
+	tier, err := domain.ParseAPITier(cfg.APITier)
+	if err != nil {
+		tier = domain.TierUnknown
+	}
+	apiKey.SetTier(tier)
+
+	providerConfig := ai.ProviderConfig{
+		Model:   cfg.DefaultModel,
+		Timeout: 30,
+	}
+	aiProvider := ai.NewCerebrasProvider(apiKey, providerConfig)
+
+	// Create and launch AppModel (unified TUI)
+	model := ui.NewAppModel(gitOps, aiProvider, cfg, cwd)
+	p := tea.NewProgram(model, tea.WithAltScreen())
+
+	_, err = p.Run()
+	if err != nil {
+		return fmt.Errorf("application error: %w", err)
+	}
+
+	return nil
 }
 
 func runConfig() error {

@@ -7,17 +7,21 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/yourusername/gitman/internal/domain"
-	"github.com/yourusername/gitman/internal/usecase"
 )
 
 // CommitViewModel represents the state of the commit view.
 type CommitViewModel struct {
-	analysis      *usecase.AnalyzeCommitResponse
-	selectedIndex int
-	options       []CommitOption
-	confirmed     bool
-	cancelled     bool
-	err           error
+	repo              *domain.Repository
+	branchInfo        *domain.BranchInfo
+	decision          *domain.Decision
+	tokensUsed        int
+	model             string
+	selectedIndex     int
+	options           []CommitOption
+	confirmed         bool
+	returnToDashboard bool
+	hasDecision       bool
+	err               error
 }
 
 // CommitOption represents a user-selectable option.
@@ -31,15 +35,26 @@ type CommitOption struct {
 }
 
 // NewCommitViewModel creates a new commit view model.
-func NewCommitViewModel(analysis *usecase.AnalyzeCommitResponse) CommitViewModel {
-	options := buildOptions(analysis.Decision)
+func NewCommitViewModel(
+	repo *domain.Repository,
+	branchInfo *domain.BranchInfo,
+	decision *domain.Decision,
+	tokensUsed int,
+	model string,
+) *CommitViewModel {
+	options := buildOptions(decision)
 
-	return CommitViewModel{
-		analysis:      analysis,
-		selectedIndex: 0,
-		options:       options,
-		confirmed:     false,
-		cancelled:     false,
+	return &CommitViewModel{
+		repo:              repo,
+		branchInfo:        branchInfo,
+		decision:          decision,
+		tokensUsed:        tokensUsed,
+		model:             model,
+		selectedIndex:     0,
+		options:           options,
+		confirmed:         false,
+		returnToDashboard: false,
+		hasDecision:       false,
 	}
 }
 
@@ -112,10 +127,6 @@ func (m CommitViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "q", "esc":
-			m.cancelled = true
-			return m, tea.Quit
-
 		case "up", "k":
 			if m.selectedIndex > 0 {
 				m.selectedIndex--
@@ -127,8 +138,10 @@ func (m CommitViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "enter":
+			// Signal that a decision has been made
+			m.hasDecision = true
 			m.confirmed = true
-			return m, tea.Quit
+			return m, nil
 		}
 	}
 
@@ -151,22 +164,26 @@ func (m CommitViewModel) View() string {
 	sections = append(sections, header)
 
 	// Repository info
-	repo := m.analysis.Repository
-	repoInfo := m.renderRepoInfo(repo)
+	repoInfo := m.renderRepoInfo()
 	sections = append(sections, repoInfo)
 
 	// Warning if no remote
-	if !repo.HasRemote() {
+	if !m.repo.HasRemote() {
 		warning := warningStyle.Render("[WARNING]") + " " +
 			lipgloss.NewStyle().Foreground(colorMuted).Render(
 				"No remote configured. Use 'git remote add origin <url>' to add one.")
 		sections = append(sections, warning)
 	}
 
+	// Separator
+	sections = append(sections, renderSeparator(80))
+
 	// Commit message box
-	decision := m.analysis.Decision
-	commitBox := m.renderCommitMessage(decision)
+	commitBox := m.renderCommitMessage()
 	sections = append(sections, commitBox)
+
+	// Separator
+	sections = append(sections, renderSeparator(80))
 
 	// Options
 	optionsSection := m.renderOptions()
@@ -179,35 +196,45 @@ func (m CommitViewModel) View() string {
 	return lipgloss.JoinVertical(lipgloss.Left, sections...)
 }
 
-func (m CommitViewModel) renderRepoInfo(repo *domain.Repository) string {
+func (m CommitViewModel) renderRepoInfo() string {
 	var lines []string
 
 	lines = append(lines, sectionTitleStyle.Render("Repository"))
 
-	pathLine := repoLabelStyle.Render("Path:") + " " + repoValueStyle.Render(repo.Path())
+	pathLine := repoLabelStyle.Render("Path:") + " " + repoValueStyle.Render(m.repo.Path())
 	lines = append(lines, pathLine)
 
-	branchLine := repoLabelStyle.Render("Branch:") + " " + repoValueStyle.Render(repo.CurrentBranch())
+	branchLine := repoLabelStyle.Render("Branch:") + " " + repoValueStyle.Render(m.repo.CurrentBranch())
 	lines = append(lines, branchLine)
 
-	changesLine := repoLabelStyle.Render("Changes:") + " " + repoValueStyle.Render(repo.ChangeSummary())
+	changesLine := repoLabelStyle.Render("Changes:") + " " + repoValueStyle.Render(m.repo.ChangeSummary())
 	lines = append(lines, changesLine)
 
 	return strings.Join(lines, "\n")
 }
 
-func (m CommitViewModel) renderCommitMessage(decision *domain.Decision) string {
+func (m CommitViewModel) renderCommitMessage() string {
 	var content string
 
-	if decision.SuggestedMessage() != nil {
-		content = decision.SuggestedMessage().Title()
+	if m.decision.SuggestedMessage() != nil {
+		content = m.decision.SuggestedMessage().Title()
 	} else {
 		content = "No message generated"
 	}
 
 	title := sectionTitleStyle.Render("Suggested Commit Message")
+
+	// Show AI analysis reasoning
+	var reasoning string
+	if m.decision.Reasoning() != "" {
+		reasoning = descriptionStyle.Render("AI Analysis: " + m.decision.Reasoning())
+	}
+
 	box := commitBoxStyle.Render(content)
 
+	if reasoning != "" {
+		return title + "\n" + box + "\n" + reasoning
+	}
 	return title + "\n" + box
 }
 
@@ -228,39 +255,43 @@ func (m CommitViewModel) renderOptions() string {
 }
 
 func (m CommitViewModel) renderOption(index int, option CommitOption) string {
-	var parts []string
+	isSelected := index == m.selectedIndex
 
-	// Cursor and number
-	cursor := "  "
-	numberStyle := optionNormalStyle
-	labelStyle := optionNormalStyle
-	confStyle := getConfidenceStyle(option.Confidence)
+	// Build option content
+	var content []string
 
-	if index == m.selectedIndex {
-		cursor = optionCursorStyle.Render("> ")
-		numberStyle = optionSelectedStyle
-		labelStyle = optionSelectedStyle
+	// Label with number
+	number := fmt.Sprintf("%d.", index+1)
+	label := fmt.Sprintf("%s %s", number, option.Label)
+	if isSelected {
+		content = append(content, optionLabelStyle.Render(label))
+	} else {
+		content = append(content, optionNormalStyle.Render(label))
 	}
 
-	number := numberStyle.Render(fmt.Sprintf("%d.", index+1))
-	label := labelStyle.Render(option.Label)
+	// Confidence badge on same line
+	badge := getConfidenceBadge(option.Confidence)
+	content[0] = content[0] + " " + badge
 
-	// Confidence badge
-	confLabel := getConfidenceLabel(option.Confidence)
-	confBadge := confStyle.Render(fmt.Sprintf("[%s: %.0f%%]", confLabel, option.Confidence*100))
-
-	// First line: cursor + number + label + confidence
-	firstLine := cursor + number + " " + label + " " + confBadge
-	parts = append(parts, firstLine)
-
-	// Description (wrapped and indented)
+	// Description (indented)
 	if option.Description != "" {
-		wrapped := wrapText(option.Description, 65)
-		desc := descriptionStyle.Render(wrapped)
-		parts = append(parts, desc)
+		wrapped := wrapText(option.Description, 70)
+		desc := optionDescStyle.Render(wrapped)
+		content = append(content, desc)
 	}
 
-	return strings.Join(parts, "\n")
+	// Join content
+	optionContent := strings.Join(content, "\n")
+
+	// Wrap in box style
+	var boxStyle lipgloss.Style
+	if isSelected {
+		boxStyle = selectedOptionBoxStyle
+	} else {
+		boxStyle = normalOptionBoxStyle
+	}
+
+	return boxStyle.Render(optionContent)
 }
 
 func (m CommitViewModel) renderFooter() string {
@@ -270,35 +301,41 @@ func (m CommitViewModel) renderFooter() string {
 	shortcuts := []string{
 		shortcutKeyStyle.Render("↑/↓") + " " + shortcutDescStyle.Render("Navigate"),
 		shortcutKeyStyle.Render("Enter") + " " + shortcutDescStyle.Render("Confirm"),
-		shortcutKeyStyle.Render("Esc/Q") + " " + shortcutDescStyle.Render("Cancel"),
+		shortcutKeyStyle.Render("Esc") + " " + shortcutDescStyle.Render("Cancel"),
 	}
 	shortcutLine := strings.Join(shortcuts, "  ")
 	lines = append(lines, shortcutLine)
 
 	// Metadata
 	metadata := metadataStyle.Render(fmt.Sprintf("Model: %s  |  Tokens: %d",
-		m.analysis.Model, m.analysis.TokensUsed))
+		m.model, m.tokensUsed))
 	lines = append(lines, metadata)
 
 	return footerStyle.Render(strings.Join(lines, "\n"))
 }
 
-// GetSelectedOption returns the currently selected option.
-func (m CommitViewModel) GetSelectedOption() *CommitOption {
+// GetSelectedOption returns the currently selected option as a domain.Alternative.
+func (m CommitViewModel) GetSelectedOption() *domain.Alternative {
 	if m.selectedIndex >= 0 && m.selectedIndex < len(m.options) {
-		return &m.options[m.selectedIndex]
+		opt := m.options[m.selectedIndex]
+		return &domain.Alternative{
+			Action:      opt.Action,
+			Description: opt.Description,
+			Confidence:  opt.Confidence,
+			BranchName:  opt.BranchName,
+		}
 	}
 	return nil
 }
 
-// IsConfirmed returns true if the user confirmed the selection.
-func (m CommitViewModel) IsConfirmed() bool {
-	return m.confirmed
+// ShouldReturnToDashboard returns true if the view should return to dashboard.
+func (m CommitViewModel) ShouldReturnToDashboard() bool {
+	return m.returnToDashboard
 }
 
-// IsCancelled returns true if the user cancelled.
-func (m CommitViewModel) IsCancelled() bool {
-	return m.cancelled
+// HasDecision returns true if the user has made a decision.
+func (m CommitViewModel) HasDecision() bool {
+	return m.hasDecision
 }
 
 func wrapText(text string, width int) string {

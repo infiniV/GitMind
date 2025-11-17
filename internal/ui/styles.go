@@ -1,27 +1,31 @@
 package ui
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Color scheme
+// Color scheme (Claude Code inspired)
 var (
-	// Primary colors
-	colorPrimary   = lipgloss.Color("#00D9FF") // Cyan
-	colorSecondary = lipgloss.Color("#7C3AED") // Purple
-	colorSuccess   = lipgloss.Color("#10B981") // Green
-	colorWarning   = lipgloss.Color("#F59E0B") // Amber
-	colorError     = lipgloss.Color("#EF4444") // Red
-	colorMuted     = lipgloss.Color("#6B7280") // Gray
+	// Primary colors - warm, professional palette
+	colorPrimary   = lipgloss.Color("#C15F3C") // Claude Orange (rust/warm)
+	colorSecondary = lipgloss.Color("#A14A2F") // Dark Orange
+	colorSuccess   = lipgloss.Color("#7A9A6E") // Warm green
+	colorWarning   = lipgloss.Color("#D4945A") // Warm amber
+	colorError     = lipgloss.Color("#C16B6B") // Warm red
+	colorMuted     = lipgloss.Color("#B1ADA1") // Cloudy (warm gray)
 
 	// Confidence level colors
-	colorHighConfidence   = lipgloss.Color("#10B981") // Green
-	colorMediumConfidence = lipgloss.Color("#F59E0B") // Amber
-	colorLowConfidence    = lipgloss.Color("#EF4444") // Red
+	colorHighConfidence   = lipgloss.Color("#7A9A6E") // Warm green
+	colorMediumConfidence = lipgloss.Color("#D4945A") // Warm amber
+	colorLowConfidence    = lipgloss.Color("#C16B6B") // Warm red
 
 	// UI element colors
-	colorBorder   = lipgloss.Color("#374151") // Dark gray
-	colorSelected = lipgloss.Color("#00D9FF") // Cyan (same as primary)
+	colorBorder   = lipgloss.Color("#3A3631") // Warm dark gray
+	colorSelected = lipgloss.Color("#C15F3C") // Claude Orange
+	colorText     = lipgloss.Color("#e8e6e3") // Light warm text
 )
 
 // Style definitions
@@ -46,7 +50,7 @@ var (
 			Width(12)
 
 	repoValueStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#F3F4F6"))
+			Foreground(colorText)
 
 	// Warning style
 	warningStyle = lipgloss.NewStyle().
@@ -67,7 +71,7 @@ var (
 				Bold(true)
 
 	optionNormalStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#9CA3AF"))
+				Foreground(colorMuted)
 
 	optionCursorStyle = lipgloss.NewStyle().
 				Foreground(colorSelected).
@@ -118,23 +122,20 @@ var (
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(colorBorder).
 				Padding(1).
-				Width(38).
-				Height(7)
+				Width(38)
 
 	dashboardCardActiveStyle = lipgloss.NewStyle().
 					Border(lipgloss.RoundedBorder()).
 					BorderForeground(colorSelected).
 					Padding(1).
-					Width(38).
-					Height(7)
+					Width(38)
 
 	cardTitleStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(colorPrimary)
 
 	cardContentStyle = lipgloss.NewStyle().
-				Foreground(colorMuted).
-				MarginTop(1)
+				Foreground(colorMuted)
 
 	cardIconStyle = lipgloss.NewStyle().
 			Foreground(colorSecondary).
@@ -174,6 +175,65 @@ var (
 	checkboxStyle = lipgloss.NewStyle().
 			Foreground(colorPrimary).
 			Bold(true)
+
+	// Badge styles (for confidence levels, status indicators)
+	badgeHighStyle = lipgloss.NewStyle().
+				Foreground(colorHighConfidence).
+				Background(lipgloss.Color("#1F3A2C")).
+				Padding(0, 1).
+				Bold(true)
+
+	badgeMediumStyle = lipgloss.NewStyle().
+					Foreground(colorMediumConfidence).
+					Background(lipgloss.Color("#3A2F1F")).
+					Padding(0, 1).
+					Bold(true)
+
+	badgeLowStyle = lipgloss.NewStyle().
+				Foreground(colorLowConfidence).
+				Background(lipgloss.Color("#3A1F1F")).
+				Padding(0, 1).
+				Bold(true)
+
+	badgeInfoStyle = lipgloss.NewStyle().
+				Foreground(colorPrimary).
+				Background(lipgloss.Color("#2F2A1F")).
+				Padding(0, 1).
+				Bold(true)
+
+	// Separator styles
+	separatorStyle = lipgloss.NewStyle().
+				Foreground(colorBorder).
+				MarginTop(1).
+				MarginBottom(1)
+
+	// Option box styles (for better visual hierarchy)
+	selectedOptionBoxStyle = lipgloss.NewStyle().
+					Border(lipgloss.RoundedBorder()).
+					BorderForeground(colorSelected).
+					Padding(1).
+					MarginBottom(1)
+
+	normalOptionBoxStyle = lipgloss.NewStyle().
+					Border(lipgloss.RoundedBorder()).
+					BorderForeground(colorBorder).
+					Padding(1).
+					MarginBottom(1)
+
+	// Option label and description styles
+	optionLabelStyle = lipgloss.NewStyle().
+					Foreground(colorText).
+					Bold(true)
+
+	optionDescStyle = lipgloss.NewStyle().
+				Foreground(colorMuted).
+				PaddingTop(0).
+				PaddingLeft(2)
+
+	// Loading styles
+	loadingStyle = lipgloss.NewStyle().
+				Foreground(colorPrimary).
+				Bold(true)
 )
 
 // Helper functions for confidence levels
@@ -193,4 +253,34 @@ func getConfidenceLabel(confidence float64) string {
 		return "MEDIUM"
 	}
 	return "LOW"
+}
+
+// Helper function for confidence badges
+func getConfidenceBadge(confidence float64) string {
+	label := getConfidenceLabel(confidence)
+	percent := fmt.Sprintf("%.0f%%", confidence*100)
+
+	var badgeStyle lipgloss.Style
+	if confidence >= 0.7 {
+		badgeStyle = badgeHighStyle
+	} else if confidence >= 0.5 {
+		badgeStyle = badgeMediumStyle
+	} else {
+		badgeStyle = badgeLowStyle
+	}
+
+	return lipgloss.JoinHorizontal(
+		lipgloss.Left,
+		badgeStyle.Render(label),
+		" ",
+		statusInfoStyle.Render(percent),
+	)
+}
+
+// Helper function for horizontal separators
+func renderSeparator(width int) string {
+	if width <= 0 {
+		width = 60
+	}
+	return separatorStyle.Render(strings.Repeat("─", width))
 }

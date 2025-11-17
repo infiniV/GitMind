@@ -11,12 +11,13 @@ import (
 
 // MergeViewModel represents the state of the merge view.
 type MergeViewModel struct {
-	analysis      *usecase.AnalyzeMergeResponse
-	selectedIndex int
-	strategies    []MergeStrategy
-	confirmed     bool
-	cancelled     bool
-	err           error
+	analysis          *usecase.AnalyzeMergeResponse
+	selectedIndex     int
+	strategies        []MergeStrategy
+	confirmed         bool
+	returnToDashboard bool
+	hasDecision       bool
+	err               error
 }
 
 // MergeStrategy represents a selectable merge strategy.
@@ -32,11 +33,12 @@ func NewMergeViewModel(analysis *usecase.AnalyzeMergeResponse) MergeViewModel {
 	strategies := buildMergeStrategies(analysis)
 
 	return MergeViewModel{
-		analysis:      analysis,
-		selectedIndex: 0,
-		strategies:    strategies,
-		confirmed:     false,
-		cancelled:     false,
+		analysis:          analysis,
+		selectedIndex:     0,
+		strategies:        strategies,
+		confirmed:         false,
+		returnToDashboard: false,
+		hasDecision:       false,
 	}
 }
 
@@ -87,10 +89,6 @@ func (m MergeViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "q", "esc":
-			m.cancelled = true
-			return m, tea.Quit
-
 		case "up", "k":
 			if m.selectedIndex > 0 {
 				m.selectedIndex--
@@ -102,8 +100,10 @@ func (m MergeViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "enter":
+			// Signal that a decision has been made
+			m.hasDecision = true
 			m.confirmed = true
-			return m, tea.Quit
+			return m, nil
 		}
 	}
 
@@ -324,5 +324,15 @@ func (m MergeViewModel) IsConfirmed() bool {
 
 // IsCancelled returns whether the user cancelled.
 func (m MergeViewModel) IsCancelled() bool {
-	return m.cancelled
+	return m.returnToDashboard
+}
+
+// ShouldReturnToDashboard returns true if the view should return to dashboard.
+func (m MergeViewModel) ShouldReturnToDashboard() bool {
+	return m.returnToDashboard
+}
+
+// HasDecision returns true if the user has made a decision.
+func (m MergeViewModel) HasDecision() bool {
+	return m.hasDecision
 }
