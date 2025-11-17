@@ -39,11 +39,16 @@ func (cs ChangeStatus) String() string {
 
 // Repository represents the current state of a Git repository.
 type Repository struct {
-	path          string
-	currentBranch string
-	hasRemote     bool
-	isClean       bool
-	changes       []FileChange
+	path           string
+	currentBranch  string
+	hasRemote      bool
+	remoteURL      string
+	remoteName     string
+	isGitHubRemote bool
+	commitsAhead   int
+	commitsBehind  int
+	isClean        bool
+	changes        []FileChange
 }
 
 // NewRepository creates a new Repository instance.
@@ -176,4 +181,75 @@ func (r *Repository) GetChangesByStatus(status ChangeStatus) []FileChange {
 func (r *Repository) String() string {
 	return fmt.Sprintf("Repository{path: %s, branch: %s, changes: %s}",
 		r.path, r.currentBranch, r.ChangeSummary())
+}
+
+// RemoteURL returns the remote URL.
+func (r *Repository) RemoteURL() string {
+	return r.remoteURL
+}
+
+// SetRemoteURL sets the remote URL.
+func (r *Repository) SetRemoteURL(url string) {
+	r.remoteURL = url
+}
+
+// RemoteName returns the remote name (e.g., "origin").
+func (r *Repository) RemoteName() string {
+	return r.remoteName
+}
+
+// SetRemoteName sets the remote name.
+func (r *Repository) SetRemoteName(name string) {
+	r.remoteName = name
+}
+
+// IsGitHubRemote returns true if the remote is a GitHub repository.
+func (r *Repository) IsGitHubRemote() bool {
+	return r.isGitHubRemote
+}
+
+// SetIsGitHubRemote sets whether the remote is a GitHub repository.
+func (r *Repository) SetIsGitHubRemote(isGitHub bool) {
+	r.isGitHubRemote = isGitHub
+}
+
+// CommitsAhead returns the number of commits ahead of remote.
+func (r *Repository) CommitsAhead() int {
+	return r.commitsAhead
+}
+
+// SetCommitsAhead sets the number of commits ahead of remote.
+func (r *Repository) SetCommitsAhead(count int) {
+	r.commitsAhead = count
+}
+
+// CommitsBehind returns the number of commits behind remote.
+func (r *Repository) CommitsBehind() int {
+	return r.commitsBehind
+}
+
+// SetCommitsBehind sets the number of commits behind remote.
+func (r *Repository) SetCommitsBehind(count int) {
+	r.commitsBehind = count
+}
+
+// SyncStatusSummary returns a human-readable summary of sync status with remote.
+func (r *Repository) SyncStatusSummary() string {
+	if !r.hasRemote {
+		return "no remote"
+	}
+
+	if r.commitsAhead == 0 && r.commitsBehind == 0 {
+		return "synced"
+	}
+
+	parts := make([]string, 0, 2)
+	if r.commitsAhead > 0 {
+		parts = append(parts, fmt.Sprintf("↑%d", r.commitsAhead))
+	}
+	if r.commitsBehind > 0 {
+		parts = append(parts, fmt.Sprintf("↓%d", r.commitsBehind))
+	}
+
+	return fmt.Sprintf("%s %s", parts[0], parts[len(parts)-1])
 }

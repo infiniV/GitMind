@@ -23,6 +23,7 @@ const (
 	BranchListMenu
 	QuickStatusMenu
 	HelpMenu
+	RepositoryDetailsMenu
 )
 
 // Dashboard actions that can be returned
@@ -34,6 +35,12 @@ const (
 	ActionMerge
 	ActionSwitchBranch
 	ActionRefresh
+	ActionFetch
+	ActionPull
+	ActionPush
+	ActionViewGitHub
+	ActionShowGitHubInfo
+	ActionSetupRemote
 )
 
 // DashboardModel represents the state of the dashboard view
@@ -206,8 +213,8 @@ func (m DashboardModel) handleSubmenuKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // handleCardActivation opens submenu or performs action when card is selected
 func (m DashboardModel) handleCardActivation() (tea.Model, tea.Cmd) {
 	switch m.selectedCard {
-	case 0: // Repository Status - show quick status
-		m.activeSubmenu = QuickStatusMenu
+	case 0: // Repository Status - show repository details menu
+		m.activeSubmenu = RepositoryDetailsMenu
 		m.submenuIndex = 0
 
 	case 1: // AI Commit - show commit options
@@ -273,6 +280,73 @@ func (m DashboardModel) handleSubmenuSelection() (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+	case RepositoryDetailsMenu:
+		// Build the action list dynamically to match rendering
+		actionIndex := 0
+		if m.repo != nil && m.repo.HasRemote() {
+			// Fetch is always first
+			if actionIndex == m.submenuIndex {
+				m.action = ActionFetch
+				m.activeSubmenu = NoSubmenu
+				return m, nil
+			}
+			actionIndex++
+
+			// Pull if behind
+			if m.repo.CommitsBehind() > 0 {
+				if actionIndex == m.submenuIndex {
+					m.action = ActionPull
+					m.activeSubmenu = NoSubmenu
+					return m, nil
+				}
+				actionIndex++
+			}
+
+			// Push if ahead
+			if m.repo.CommitsAhead() > 0 {
+				if actionIndex == m.submenuIndex {
+					m.action = ActionPush
+					m.activeSubmenu = NoSubmenu
+					return m, nil
+				}
+				actionIndex++
+			}
+
+			// GitHub actions if GitHub remote
+			if m.repo.IsGitHubRemote() {
+				// View on GitHub (web)
+				if actionIndex == m.submenuIndex {
+					m.action = ActionViewGitHub
+					m.activeSubmenu = NoSubmenu
+					return m, nil
+				}
+				actionIndex++
+
+				// Show GitHub info
+				if actionIndex == m.submenuIndex {
+					m.action = ActionShowGitHubInfo
+					m.activeSubmenu = NoSubmenu
+					return m, nil
+				}
+				actionIndex++
+			}
+		} else {
+			// Setup remote if no remote
+			if actionIndex == m.submenuIndex {
+				m.action = ActionSetupRemote
+				m.activeSubmenu = NoSubmenu
+				return m, nil
+			}
+			actionIndex++
+		}
+
+		// Refresh is always last
+		if actionIndex == m.submenuIndex {
+			m.action = ActionRefresh
+			m.activeSubmenu = NoSubmenu
+			return m, nil
+		}
+
 	case QuickStatusMenu, CommitListMenu, HelpMenu:
 		// These are read-only, just close on enter
 		m.activeSubmenu = NoSubmenu
@@ -297,6 +371,25 @@ func (m DashboardModel) getSubmenuMaxIndex() int {
 		return 0 // Read-only
 	case HelpMenu:
 		return 0 // Read-only
+	case RepositoryDetailsMenu:
+		// Count available actions dynamically
+		count := 0
+		if m.repo != nil && m.repo.HasRemote() {
+			count++ // Fetch
+			if m.repo.CommitsBehind() > 0 {
+				count++ // Pull
+			}
+			if m.repo.CommitsAhead() > 0 {
+				count++ // Push
+			}
+			if m.repo.IsGitHubRemote() {
+				count += 2 // View on GitHub + Show GitHub info
+			}
+		} else {
+			count++ // Setup remote
+		}
+		count++ // Refresh
+		return count - 1 // Return max index (count - 1)
 	}
 	return 0
 }
@@ -404,23 +497,59 @@ func (m DashboardModel) renderRepoStatusCard() string {
 		return strings.Join(lines, "\n")
 	}
 
-	// Branch name (shortened if too long)
+	// Line 1: Branch name (shortened if too long)
 	branch := m.repo.CurrentBranch()
 	if len(branch) > 28 {
 		branch = branch[:25] + "..."
 	}
 	lines = append(lines, branch)
 
-	// Changes status
+	// Line 2: Clean or file count
 	if m.repo.HasChanges() {
-		lines = append(lines, statusWarningStyle.Render(m.repo.ChangeSummary()))
+		fileCount := m.repo.TotalChanges()
+		statusText := fmt.Sprintf("%d file(s) changed", fileCount)
+		lines = append(lines, statusWarningStyle.Render(statusText))
 	} else {
 		lines = append(lines, statusOkStyle.Render("Clean"))
 	}
 
-	// Pad to 4 lines
-	lines = append(lines, "")
-	lines = append(lines, "")
+	// Line 3: +additions -deletions (only if has changes)
+	if m.repo.HasChanges() {
+		additions := m.repo.TotalAdditions()
+		deletions := m.repo.TotalDeletions()
+		diffText := fmt.Sprintf("+%d -%d", additions, deletions)
+		lines = append(lines, lipgloss.NewStyle().Foreground(colorMuted).Render(diffText))
+	} else {
+		lines = append(lines, "")
+	}
+
+	// Line 4: Remote sync status
+	if m.repo.HasRemote() {
+		syncStatus := m.repo.SyncStatusSummary()
+
+		// Add remote type indicator
+		var remoteIndicator string
+		if m.repo.IsGitHubRemote() {
+			remoteIndicator = statusInfoStyle.Render("→ GitHub")
+		} else {
+			remoteIndicator = lipgloss.NewStyle().Foreground(colorMuted).Render("→ Remote")
+		}
+
+		// Colorize sync status
+		var syncStatusStyled string
+		if syncStatus == "synced" {
+			syncStatusStyled = statusOkStyle.Render("synced")
+		} else if syncStatus == "no remote" {
+			syncStatusStyled = lipgloss.NewStyle().Foreground(colorMuted).Render("-")
+		} else {
+			// Has ahead/behind indicators
+			syncStatusStyled = lipgloss.NewStyle().Foreground(colorMuted).Render(syncStatus)
+		}
+
+		lines = append(lines, syncStatusStyled+" "+remoteIndicator)
+	} else {
+		lines = append(lines, lipgloss.NewStyle().Foreground(colorMuted).Render("no remote"))
+	}
 
 	return strings.Join(lines, "\n")
 }
@@ -606,6 +735,8 @@ func (m DashboardModel) renderSubmenu() string {
 		content = m.renderQuickStatusMenu()
 	case HelpMenu:
 		content = m.renderHelpMenu()
+	case RepositoryDetailsMenu:
+		content = m.renderRepositoryDetailsMenu()
 	}
 
 	return "\n" + submenuStyle.Render(content)
@@ -843,6 +974,197 @@ func (m DashboardModel) renderHelpMenu() string {
 
 	lines = append(lines, "")
 	lines = append(lines, shortcutDescStyle.Render("Esc: close"))
+
+	return strings.Join(lines, "\n")
+}
+
+// renderRepositoryDetailsMenu renders repository details and actions submenu
+func (m DashboardModel) renderRepositoryDetailsMenu() string {
+	var lines []string
+	lines = append(lines, cardTitleStyle.Render("REPOSITORY DETAILS"))
+	lines = append(lines, "")
+
+	if m.repo == nil {
+		lines = append(lines, "Loading repository information...")
+		lines = append(lines, "")
+		lines = append(lines, shortcutDescStyle.Render("Esc: close"))
+		return strings.Join(lines, "\n")
+	}
+
+	// Repository path
+	lines = append(lines, statusInfoStyle.Render("Path:"))
+	lines = append(lines, "  "+lipgloss.NewStyle().Foreground(colorMuted).Render(m.repo.Path()))
+	lines = append(lines, "")
+
+	// Branch information
+	lines = append(lines, statusInfoStyle.Render("Branch:"))
+	branchLine := "  " + m.repo.CurrentBranch()
+	if m.branchInfo != nil {
+		branchLine += " (" + string(m.branchInfo.Type()) + ")"
+		if m.branchInfo.Parent() != "" {
+			branchLine += " ← " + m.branchInfo.Parent()
+		}
+	}
+	lines = append(lines, lipgloss.NewStyle().Foreground(colorMuted).Render(branchLine))
+	lines = append(lines, "")
+
+	// Remote information
+	if m.repo.HasRemote() {
+		lines = append(lines, statusInfoStyle.Render("Remote:"))
+		remoteURL := m.repo.RemoteURL()
+		if len(remoteURL) > 60 {
+			remoteURL = remoteURL[:57] + "..."
+		}
+		lines = append(lines, "  "+lipgloss.NewStyle().Foreground(colorMuted).Render(remoteURL))
+
+		// Sync status
+		statusLine := "  Status: "
+		syncStatus := m.repo.SyncStatusSummary()
+		if syncStatus == "synced" {
+			statusLine += statusOkStyle.Render("synced")
+		} else {
+			ahead := m.repo.CommitsAhead()
+			behind := m.repo.CommitsBehind()
+			if ahead > 0 {
+				statusLine += statusInfoStyle.Render(fmt.Sprintf("↑%d ahead", ahead))
+			}
+			if behind > 0 {
+				if ahead > 0 {
+					statusLine += "  "
+				}
+				statusLine += statusWarningStyle.Render(fmt.Sprintf("↓%d behind", behind))
+			}
+		}
+		lines = append(lines, statusLine)
+		lines = append(lines, "")
+	} else {
+		lines = append(lines, statusWarningStyle.Render("Remote:"))
+		lines = append(lines, "  "+lipgloss.NewStyle().Foreground(colorMuted).Render("No remote configured"))
+		lines = append(lines, "")
+	}
+
+	// Changes summary
+	lines = append(lines, statusInfoStyle.Render("Changes:"))
+	if m.repo.HasChanges() {
+		changeSummary := fmt.Sprintf("  %d files (+%d -%d)",
+			m.repo.TotalChanges(),
+			m.repo.TotalAdditions(),
+			m.repo.TotalDeletions())
+		lines = append(lines, statusWarningStyle.Render(changeSummary))
+
+		// Show modified files (up to 3)
+		changes := m.repo.Changes()
+		displayCount := len(changes)
+		if displayCount > 3 {
+			displayCount = 3
+		}
+		for i := 0; i < displayCount; i++ {
+			change := changes[i]
+			changeLine := fmt.Sprintf("    • %s (+%d -%d)",
+				change.Path,
+				change.Additions,
+				change.Deletions)
+			lines = append(lines, lipgloss.NewStyle().Foreground(colorMuted).Render(changeLine))
+		}
+		if len(changes) > 3 {
+			lines = append(lines, lipgloss.NewStyle().Foreground(colorMuted).Render(
+				fmt.Sprintf("    ... and %d more", len(changes)-3)))
+		}
+	} else {
+		lines = append(lines, "  "+statusOkStyle.Render("Clean"))
+	}
+	lines = append(lines, "")
+
+	// Separator
+	lines = append(lines, renderSeparator(70))
+	lines = append(lines, "")
+
+	// Actions section
+	lines = append(lines, statusInfoStyle.Render("Actions:"))
+	lines = append(lines, "")
+
+	// Build actions dynamically
+	actionIndex := 0
+	if m.repo.HasRemote() {
+		// Fetch
+		fetchLine := "Fetch from remote"
+		if actionIndex == m.submenuIndex {
+			fetchLine = submenuOptionActiveStyle.Render("▶ " + fetchLine)
+		} else {
+			fetchLine = submenuOptionStyle.Render("  " + fetchLine)
+		}
+		lines = append(lines, fetchLine)
+		actionIndex++
+
+		// Pull if behind
+		if m.repo.CommitsBehind() > 0 {
+			pullLine := fmt.Sprintf("Pull from remote (↓%d available)", m.repo.CommitsBehind())
+			if actionIndex == m.submenuIndex {
+				pullLine = submenuOptionActiveStyle.Render("▶ " + pullLine)
+			} else {
+				pullLine = submenuOptionStyle.Render("  " + pullLine)
+			}
+			lines = append(lines, pullLine)
+			actionIndex++
+		}
+
+		// Push if ahead
+		if m.repo.CommitsAhead() > 0 {
+			pushLine := fmt.Sprintf("Push to remote (↑%d commits)", m.repo.CommitsAhead())
+			if actionIndex == m.submenuIndex {
+				pushLine = submenuOptionActiveStyle.Render("▶ " + pushLine)
+			} else {
+				pushLine = submenuOptionStyle.Render("  " + pushLine)
+			}
+			lines = append(lines, pushLine)
+			actionIndex++
+		}
+
+		// GitHub actions
+		if m.repo.IsGitHubRemote() {
+			// View on GitHub (web)
+			githubLine := "View on GitHub (web)"
+			if actionIndex == m.submenuIndex {
+				githubLine = submenuOptionActiveStyle.Render("▶ " + githubLine)
+			} else {
+				githubLine = submenuOptionStyle.Render("  " + githubLine)
+			}
+			lines = append(lines, githubLine)
+			actionIndex++
+
+			// Show GitHub info
+			infoLine := "Show GitHub info"
+			if actionIndex == m.submenuIndex {
+				infoLine = submenuOptionActiveStyle.Render("▶ " + infoLine)
+			} else {
+				infoLine = submenuOptionStyle.Render("  " + infoLine)
+			}
+			lines = append(lines, infoLine)
+			actionIndex++
+		}
+	} else {
+		// Setup remote
+		setupLine := "Set up remote"
+		if actionIndex == m.submenuIndex {
+			setupLine = submenuOptionActiveStyle.Render("▶ " + setupLine)
+		} else {
+			setupLine = submenuOptionStyle.Render("  " + setupLine)
+		}
+		lines = append(lines, setupLine)
+		actionIndex++
+	}
+
+	// Refresh (always last)
+	refreshLine := "Refresh status"
+	if actionIndex == m.submenuIndex {
+		refreshLine = submenuOptionActiveStyle.Render("▶ " + refreshLine)
+	} else {
+		refreshLine = submenuOptionStyle.Render("  " + refreshLine)
+	}
+	lines = append(lines, refreshLine)
+
+	lines = append(lines, "")
+	lines = append(lines, shortcutDescStyle.Render("↑/↓: navigate  •  Enter: select  •  Esc: cancel"))
 
 	return strings.Join(lines, "\n")
 }
