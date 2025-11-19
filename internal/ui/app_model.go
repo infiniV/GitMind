@@ -1050,9 +1050,37 @@ func (m AppModel) executeCommit(option *CommitOption) tea.Cmd {
 		}
 
 		// Execute commit
-		_, err := executeUC.Execute(ctx, req)
+		resp, err := executeUC.Execute(ctx, req)
+		if err != nil {
+			return commitExecutionMsg{err: err}
+		}
 
-		return commitExecutionMsg{err: err}
+		// If manual review, don't push
+		if req.Action == domain.ActionReview {
+			return commitExecutionMsg{err: nil}
+		}
+
+		// Determine branch to push
+		branchToPush := req.BranchName
+		if branchToPush == "" {
+			if resp.BranchCreated != "" {
+				branchToPush = resp.BranchCreated
+			} else {
+				var err error
+				branchToPush, err = m.gitOps.GetCurrentBranch(ctx, m.repoPath)
+				if err != nil {
+					return commitExecutionMsg{err: fmt.Errorf("commit successful but failed to get current branch for push: %w", err)}
+				}
+			}
+		}
+
+		// Push changes
+		// The Push implementation automatically handles -u if upstream is missing
+		if err := m.gitOps.Push(ctx, m.repoPath, branchToPush, false); err != nil {
+			return commitExecutionMsg{err: fmt.Errorf("commit successful but push failed: %w", err)}
+		}
+
+		return commitExecutionMsg{err: nil}
 	}
 }
 
