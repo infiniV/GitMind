@@ -32,10 +32,12 @@ type ExecuteCommitRequest struct {
 
 // ExecuteCommitResponse contains the result of the commit execution.
 type ExecuteCommitResponse struct {
-	Success      bool
+	Success       bool
 	BranchCreated string
-	CommitHash   string
-	Message      string
+	CommitHash    string
+	Message       string
+	Pushed        bool   // Whether changes were pushed to remote
+	PushError     error  // Error from push operation (if any)
 }
 
 // Execute performs the commit operation.

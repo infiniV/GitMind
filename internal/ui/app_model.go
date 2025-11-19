@@ -172,7 +172,9 @@ type mergeAnalysisMsg struct {
 }
 
 type commitExecutionMsg struct {
-	err error
+	err       error
+	pushed    bool
+	pushError error
 }
 
 type mergeExecutionMsg struct {
@@ -422,6 +424,10 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case commitExecutionMsg:
 		if msg.err != nil {
 			PrintError(fmt.Sprintf("Commit failed: %v", msg.err))
+		} else if msg.pushed {
+			PrintSuccess("Commit successful and pushed to remote!")
+		} else if msg.pushError != nil {
+			PrintWarning(fmt.Sprintf("Commit successful, but push failed: %v", msg.pushError))
 		} else {
 			PrintSuccess("Commit successful!")
 		}
@@ -1242,12 +1248,17 @@ func (m AppModel) executeCommit(option *CommitOption) tea.Cmd {
 		// Execute commit
 		resp, err := executeUC.Execute(ctx, req)
 		if err != nil {
-			return commitExecutionMsg{err: err}
+			return commitExecutionMsg{err: err, pushed: false}
 		}
 
 		// If manual review, don't push
 		if req.Action == domain.ActionReview {
-			return commitExecutionMsg{err: nil}
+			return commitExecutionMsg{err: nil, pushed: false}
+		}
+
+		// Check if auto-push is enabled
+		if !m.cfg.Git.AutoPush {
+			return commitExecutionMsg{err: nil, pushed: false}
 		}
 
 		// Determine branch to push
@@ -1259,18 +1270,27 @@ func (m AppModel) executeCommit(option *CommitOption) tea.Cmd {
 				var err error
 				branchToPush, err = m.gitOps.GetCurrentBranch(ctx, m.repoPath)
 				if err != nil {
-					return commitExecutionMsg{err: fmt.Errorf("commit successful but failed to get current branch for push: %w", err)}
+					// Commit was successful, just couldn't push
+					return commitExecutionMsg{err: nil, pushed: false, pushError: fmt.Errorf("failed to get current branch: %w", err)}
 				}
 			}
+		}
+
+		// Check if we have a remote before attempting to push
+		hasRemote, err := m.gitOps.HasRemote(ctx, m.repoPath)
+		if err != nil || !hasRemote {
+			// Commit was successful, but no remote configured
+			return commitExecutionMsg{err: nil, pushed: false, pushError: fmt.Errorf("no remote configured")}
 		}
 
 		// Push changes
 		// The Push implementation automatically handles -u if upstream is missing
 		if err := m.gitOps.Push(ctx, m.repoPath, branchToPush, false); err != nil {
-			return commitExecutionMsg{err: fmt.Errorf("commit successful but push failed: %w", err)}
+			// Commit was successful, but push failed
+			return commitExecutionMsg{err: nil, pushed: false, pushError: err}
 		}
 
-		return commitExecutionMsg{err: nil}
+		return commitExecutionMsg{err: nil, pushed: true}
 	}
 }
 
