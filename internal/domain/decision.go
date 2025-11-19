@@ -19,6 +19,8 @@ const (
 	ActionReview
 	// ActionMerge recommends merging the current branch to parent/target.
 	ActionMerge
+	// ActionCreatePR recommends creating a pull request instead of direct merge.
+	ActionCreatePR
 )
 
 // String returns the string representation of the action type.
@@ -34,6 +36,8 @@ func (at ActionType) String() string {
 		return "review"
 	case ActionMerge:
 		return "merge"
+	case ActionCreatePR:
+		return "create-pr"
 	default:
 		return fmt.Sprintf("ActionType(%d)", at)
 	}
@@ -72,8 +76,9 @@ type Decision struct {
 	branchName     string
 	alternatives   []Alternative
 	requiresReview bool
-	mergeStrategy  string // Suggested merge strategy (for ActionMerge)
-	targetBranch   string // Target branch for merge (for ActionMerge)
+	mergeStrategy  string      // Suggested merge strategy (for ActionMerge)
+	targetBranch   string      // Target branch for merge (for ActionMerge)
+	suggestedPR    *PROptions  // Suggested PR options (for ActionCreatePR)
 }
 
 // NewDecision creates a new Decision.
@@ -168,6 +173,16 @@ func (d *Decision) SetTargetBranch(branch string) {
 	d.targetBranch = branch
 }
 
+// SuggestedPR returns the suggested PR options.
+func (d *Decision) SuggestedPR() *PROptions {
+	return d.suggestedPR
+}
+
+// SetSuggestedPR sets the suggested PR options.
+func (d *Decision) SetSuggestedPR(pr *PROptions) {
+	d.suggestedPR = pr
+}
+
 // IsHighConfidence returns true if confidence is >= 0.8.
 func (d *Decision) IsHighConfidence() bool {
 	return d.confidence >= 0.8
@@ -231,6 +246,9 @@ func (d *Decision) Validate() error {
 	}
 	if d.action == ActionMerge && d.targetBranch == "" {
 		return errors.New("target branch required for merge action")
+	}
+	if d.action == ActionCreatePR && d.suggestedPR == nil {
+		return errors.New("PR options required for create-pr action")
 	}
 	return nil
 }

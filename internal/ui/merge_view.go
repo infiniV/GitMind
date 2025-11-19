@@ -82,17 +82,18 @@ func buildMergeStrategies(analysis *usecase.AnalyzeMergeResponse) []MergeStrateg
 		recommended = "regular"
 	}
 
+	// MERGE SECTION
 	// Always offer squash and regular
 	strategies = append(strategies, MergeStrategy{
 		Strategy:    "squash",
-		Label:       "Squash merge",
+		Label:       "▸ Squash merge",
 		Description: "Combine all commits into a single commit",
 		Recommended: recommended == "squash",
 	})
 
 	strategies = append(strategies, MergeStrategy{
 		Strategy:    "regular",
-		Label:       "Regular merge",
+		Label:       "▸ Regular merge",
 		Description: "Preserve all individual commits",
 		Recommended: recommended == "regular",
 	})
@@ -101,9 +102,27 @@ func buildMergeStrategies(analysis *usecase.AnalyzeMergeResponse) []MergeStrateg
 	if analysis.CanMerge && recommended == "fast-forward" {
 		strategies = append(strategies, MergeStrategy{
 			Strategy:    "fast-forward",
-			Label:       "Fast-forward",
+			Label:       "▸ Fast-forward",
 			Description: "Fast-forward without creating merge commit",
 			Recommended: true,
+		})
+	}
+
+	// PULL REQUEST SECTION
+	// Add PR options if AI suggests it
+	if analysis.SuggestedPR != nil {
+		strategies = append(strategies, MergeStrategy{
+			Strategy:    "pr-ready",
+			Label:       "◆ Create PR (Ready for Review)",
+			Description: "Open pull request for team review",
+			Recommended: false,
+		})
+
+		strategies = append(strategies, MergeStrategy{
+			Strategy:    "pr-draft",
+			Label:       "◇ Create PR (Draft)",
+			Description: "Open draft PR for work in progress",
+			Recommended: false,
 		})
 	}
 
@@ -345,12 +364,12 @@ func (m MergeViewModel) renderLogo() string {
 		Foreground(styles.ColorPrimary).
 		Bold(true).
 		Render(
-		`  ███╗   ███╗███████╗██████╗  ██████╗ ███████╗
-  ████╗ ████║██╔════╝██╔══██╗██╔════╝ ██╔════╝
-  ██╔████╔██║█████╗  ██████╔╝██║  ███╗█████╗
-  ██║╚██╔╝██║██╔══╝  ██╔══██╗██║   ██║██╔══╝
-  ██║ ╚═╝ ██║███████╗██║  ██║╚██████╔╝███████╗
-  ╚═╝     ╚═╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝`)
+		`  ███╗   ███╗███████╗██████╗  ██████╗ ███████╗   ██████╗ ██████╗
+  ████╗ ████║██╔════╝██╔══██╗██╔════╝ ██╔════╝   ██╔══██╗██╔══██╗
+  ██╔████╔██║█████╗  ██████╔╝██║  ███╗█████╗     ██████╔╝██████╔╝
+  ██║╚██╔╝██║██╔══╝  ██╔══██╗██║   ██║██╔══╝     ██╔═══╝ ██╔══██╗
+  ██║ ╚═╝ ██║███████╗██║  ██║╚██████╔╝███████╗   ██║     ██║  ██║
+  ╚═╝     ╚═╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝   ╚═╝     ╚═╝  ╚═╝`)
 }
 
 func (m MergeViewModel) renderStrategyList(width int) string {

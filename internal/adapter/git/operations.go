@@ -47,6 +47,18 @@ type Operations interface {
 	// Fetch fetches updates from the remote repository without merging.
 	Fetch(ctx context.Context, repoPath string) error
 
+	// HasUpstream checks if the specified branch has an upstream tracking branch.
+	// If branch is empty, checks the current branch.
+	HasUpstream(ctx context.Context, repoPath, branch string) (bool, error)
+
+	// GetUnpushedCommits returns the number of commits that haven't been pushed to the remote.
+	// If branch is empty, uses the current branch.
+	GetUnpushedCommits(ctx context.Context, repoPath, branch string) (int, error)
+
+	// GetCommitRange returns commits between base and head branches.
+	// This is useful for PR descriptions to see what commits would be included.
+	GetCommitRange(ctx context.Context, repoPath, baseBranch, headBranch string) ([]CommitInfo, error)
+
 	// GetRemoteURL returns the URL for the specified remote (usually "origin").
 	GetRemoteURL(ctx context.Context, repoPath, remoteName string) (string, error)
 

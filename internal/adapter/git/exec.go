@@ -334,6 +334,180 @@ func (e *ExecOperations) Add(ctx context.Context, repoPath string, files []strin
 	return nil
 }
 
+// Push pushes commits to the remote repository.
+// If branch is empty, pushes the current branch.
+func (e *ExecOperations) Push(ctx context.Context, repoPath, branch string, force bool) error {
+	args := []string{"push"}
+
+	// Get current branch if not specified
+	if branch == "" {
+		currentBranch, err := e.GetCurrentBranch(ctx, repoPath)
+		if err != nil {
+			return fmt.Errorf("failed to get current branch: %w", err)
+		}
+		branch = currentBranch
+	}
+
+	// Check if branch has upstream
+	hasUpstream, err := e.HasUpstream(ctx, repoPath, branch)
+	if err != nil {
+		return fmt.Errorf("failed to check upstream: %w", err)
+	}
+
+	// Set upstream if it doesn't exist
+	if !hasUpstream {
+		args = append(args, "--set-upstream", "origin", branch)
+	}
+
+	// Add force flag if requested
+	if force {
+		args = append(args, "--force")
+	}
+
+	_, stderr, err := e.execGit(ctx, repoPath, args...)
+	if err != nil {
+		return fmt.Errorf("failed to push: %s: %w", stderr, err)
+	}
+
+	return nil
+}
+
+// Pull pulls changes from the remote repository.
+func (e *ExecOperations) Pull(ctx context.Context, repoPath string) error {
+	_, stderr, err := e.execGit(ctx, repoPath, "pull")
+	if err != nil {
+		return fmt.Errorf("failed to pull: %s: %w", stderr, err)
+	}
+	return nil
+}
+
+// Fetch fetches updates from the remote repository without merging.
+func (e *ExecOperations) Fetch(ctx context.Context, repoPath string) error {
+	_, stderr, err := e.execGit(ctx, repoPath, "fetch")
+	if err != nil {
+		return fmt.Errorf("failed to fetch: %s: %w", stderr, err)
+	}
+	return nil
+}
+
+// HasUpstream checks if the specified branch has an upstream tracking branch.
+// If branch is empty, checks the current branch.
+func (e *ExecOperations) HasUpstream(ctx context.Context, repoPath, branch string) (bool, error) {
+	if branch == "" {
+		currentBranch, err := e.GetCurrentBranch(ctx, repoPath)
+		if err != nil {
+			return false, fmt.Errorf("failed to get current branch: %w", err)
+		}
+		branch = currentBranch
+	}
+
+	// Check if upstream is configured for this branch
+	stdout, _, err := e.execGit(ctx, repoPath, "rev-parse", "--abbrev-ref", branch+"@{upstream}")
+	if err != nil {
+		// No upstream configured
+		return false, nil
+	}
+
+	return stdout != "", nil
+}
+
+// GetUnpushedCommits returns the number of commits that haven't been pushed to the remote.
+// If branch is empty, uses the current branch.
+func (e *ExecOperations) GetUnpushedCommits(ctx context.Context, repoPath, branch string) (int, error) {
+	if branch == "" {
+		currentBranch, err := e.GetCurrentBranch(ctx, repoPath)
+		if err != nil {
+			return 0, fmt.Errorf("failed to get current branch: %w", err)
+		}
+		branch = currentBranch
+	}
+
+	// Check if branch has upstream
+	hasUpstream, err := e.HasUpstream(ctx, repoPath, branch)
+	if err != nil {
+		return 0, err
+	}
+
+	if !hasUpstream {
+		// No upstream, count all commits from the parent branch
+		// This is a simplified approach - count commits on the current branch
+		stdout, _, err := e.execGit(ctx, repoPath, "rev-list", "--count", "HEAD")
+		if err != nil {
+			return 0, fmt.Errorf("failed to count commits: %w", err)
+		}
+
+		var count int
+		_, err = fmt.Sscanf(stdout, "%d", &count)
+		if err != nil {
+			return 0, fmt.Errorf("failed to parse commit count: %w", err)
+		}
+		return count, nil
+	}
+
+	// Count commits ahead of upstream
+	stdout, _, err := e.execGit(ctx, repoPath, "rev-list", "--count", branch+"@{upstream}.."+branch)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count unpushed commits: %w", err)
+	}
+
+	var count int
+	_, err = fmt.Sscanf(stdout, "%d", &count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse commit count: %w", err)
+	}
+
+	return count, nil
+}
+
+// GetCommitRange returns commits between base and head branches.
+// This is useful for PR descriptions to see what commits would be included.
+func (e *ExecOperations) GetCommitRange(ctx context.Context, repoPath, baseBranch, headBranch string) ([]CommitInfo, error) {
+	if baseBranch == "" || headBranch == "" {
+		return nil, errors.New("base and head branches are required")
+	}
+
+	// Get commit range: baseBranch..headBranch
+	args := []string{
+		"log",
+		"--format=%H%x00%an%x00%ad%x00%s",
+		"--date=iso",
+		baseBranch + ".." + headBranch,
+	}
+
+	stdout, stderr, err := e.execGit(ctx, repoPath, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get commit range: %s: %w", stderr, err)
+	}
+
+	if stdout == "" {
+		return []CommitInfo{}, nil
+	}
+
+	lines := strings.Split(stdout, "\n")
+	commits := make([]CommitInfo, 0, len(lines))
+
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+
+		parts := strings.Split(line, "\x00")
+		if len(parts) < 4 {
+			continue
+		}
+
+		commit := CommitInfo{
+			Hash:    parts[0],
+			Author:  parts[1],
+			Date:    parts[2],
+			Message: parts[3],
+		}
+		commits = append(commits, commit)
+	}
+
+	return commits, nil
+}
+
 // Commit creates a commit with the given message.
 func (e *ExecOperations) Commit(ctx context.Context, repoPath string, message string, files []string) error {
 	if message == "" {
@@ -387,62 +561,6 @@ func (e *ExecOperations) CheckoutBranch(ctx context.Context, repoPath, branchNam
 	_, stderr, err := e.execGit(ctx, repoPath, "checkout", branchName)
 	if err != nil {
 		return fmt.Errorf("failed to checkout branch: %s: %w", stderr, err)
-	}
-
-	return nil
-}
-
-// Push pushes commits to the remote repository.
-func (e *ExecOperations) Push(ctx context.Context, repoPath, branch string, force bool) error {
-	if branch == "" {
-		var err error
-		branch, err = e.GetCurrentBranch(ctx, repoPath)
-		if err != nil {
-			return fmt.Errorf("failed to get current branch: %w", err)
-		}
-	}
-
-	args := []string{"push"}
-
-	// Check if upstream is configured
-	_, _, upstreamErr := e.execGit(ctx, repoPath, "rev-parse", "--abbrev-ref", branch+"@{upstream}")
-	if upstreamErr != nil {
-		// No upstream configured - set it with -u flag
-		args = append(args, "-u")
-	}
-
-	if force {
-		args = append(args, "--force")
-	}
-
-	args = append(args, "origin", branch)
-
-	_, stderr, err := e.execGit(ctx, repoPath, args...)
-	if err != nil {
-		return fmt.Errorf("failed to push: %s: %w", stderr, err)
-	}
-
-	return nil
-}
-
-// Pull pulls changes from the remote repository.
-func (e *ExecOperations) Pull(ctx context.Context, repoPath string) error {
-	_, stderr, err := e.execGit(ctx, repoPath, "pull")
-	if err != nil {
-		if strings.Contains(stderr, "no tracking information") {
-			return errors.New("no tracking information for the current branch")
-		}
-		return fmt.Errorf("failed to pull: %s: %w", stderr, err)
-	}
-
-	return nil
-}
-
-// Fetch fetches updates from the remote repository without merging.
-func (e *ExecOperations) Fetch(ctx context.Context, repoPath string) error {
-	_, stderr, err := e.execGit(ctx, repoPath, "fetch")
-	if err != nil {
-		return fmt.Errorf("failed to fetch: %s: %w", stderr, err)
 	}
 
 	return nil

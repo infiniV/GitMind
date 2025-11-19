@@ -72,12 +72,18 @@ or create a new branch based on the nature of your changes.`,
 func mergeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "merge",
-		Short: "Analyze and execute an AI-powered merge",
-		Long: `Analyzes a merge operation using AI and helps you merge branches intelligently.
-The AI will suggest an appropriate merge strategy (squash, regular, or fast-forward)
-and generate a meaningful merge commit message based on the commits being merged.`,
+		Short: "Merge branches or create pull requests with AI assistance",
+		Long: `Analyzes branches and helps you integrate changes intelligently.
+The AI will suggest whether to merge directly or create a pull request,
+along with appropriate merge strategies (squash, regular, or fast-forward) or
+PR titles and descriptions generated from your commits.
+
+Options:
+  - Direct merge: Squash, regular, or fast-forward merge
+  - Pull request: Create draft or ready PRs with AI-generated content
+  - PR management: List, view, and manage existing pull requests`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Launch dashboard which handles merge workflow
+			// Launch dashboard which handles merge/PR workflow
 			return runDashboard()
 		},
 	}

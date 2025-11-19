@@ -11,7 +11,7 @@ type LogoVariant string
 const (
 	LogoDashboard LogoVariant = "dashboard"
 	LogoCommit    LogoVariant = "commit"
-	LogoMerge     LogoVariant = "merge"
+	LogoMergePR   LogoVariant = "merge-pr"
 	LogoSettings  LogoVariant = "settings"
 	LogoOnboard   LogoVariant = "onboard"
 )
@@ -40,14 +40,14 @@ func RenderLogo(variant LogoVariant, repoInfo string) string {
   ╚██████╗╚██████╔╝██║ ╚═╝ ██║██║ ╚═╝ ██║██║   ██║
    ╚═════╝ ╚═════╝ ╚═╝     ╚═╝╚═╝     ╚═╝╚═╝   ╚═╝`
 
-	case LogoMerge:
+	case LogoMergePR:
 		ascii = `
-  ███╗   ███╗███████╗██████╗  ██████╗ ███████╗
-  ████╗ ████║██╔════╝██╔══██╗██╔════╝ ██╔════╝
-  ██╔████╔██║█████╗  ██████╔╝██║  ███╗█████╗
-  ██║╚██╔╝██║██╔══╝  ██╔══██╗██║   ██║██╔══╝
-  ██║ ╚═╝ ██║███████╗██║  ██║╚██████╔╝███████╗
-  ╚═╝     ╚═╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝`
+  ███╗   ███╗███████╗██████╗  ██████╗ ███████╗   ██████╗ ██████╗
+  ████╗ ████║██╔════╝██╔══██╗██╔════╝ ██╔════╝   ██╔══██╗██╔══██╗
+  ██╔████╔██║█████╗  ██████╔╝██║  ███╗█████╗     ██████╔╝██████╔╝
+  ██║╚██╔╝██║██╔══╝  ██╔══██╗██║   ██║██╔══╝     ██╔═══╝ ██╔══██╗
+  ██║ ╚═╝ ██║███████╗██║  ██║╚██████╔╝███████╗   ██║     ██║  ██║
+  ╚═╝     ╚═╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝   ╚═╝     ╚═╝  ╚═╝`
 
 	case LogoSettings:
 		ascii = `
@@ -98,8 +98,8 @@ func RenderLogoCompact(variant LogoVariant) string {
 	switch variant {
 	case LogoCommit:
 		text = "[ COMMIT ]"
-	case LogoMerge:
-		text = "[ MERGE ]"
+	case LogoMergePR:
+		text = "[ MERGE/PR ]"
 	case LogoSettings:
 		text = "[ SETTINGS ]"
 	case LogoOnboard:

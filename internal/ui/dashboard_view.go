@@ -573,7 +573,7 @@ func (m DashboardModel) View() string {
 func (m DashboardModel) renderTopRow() string {
 	card0 := m.renderCard(0, "REPOSITORY", m.renderRepoStatusCard())
 	card1 := m.renderCard(1, "COMMIT", m.renderCommitCard())
-	card2 := m.renderCard(2, "MERGE", m.renderMergeCard())
+	card2 := m.renderCard(2, "MERGE/PR", m.renderMergeCard())
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, card0, card1, card2)
 }
@@ -698,7 +698,7 @@ func (m DashboardModel) renderCommitCard() string {
 		lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("Working tree clean"))
 }
 
-// renderMergeCard renders merge card content
+// renderMergeCard renders merge/PR card content
 func (m DashboardModel) renderMergeCard() string {
 	if m.branchInfo == nil {
 		return "Loading..."
@@ -717,10 +717,16 @@ func (m DashboardModel) renderMergeCard() string {
 			status = fmt.Sprintf("%d commits ahead", m.branchInfo.CommitCount())
 		}
 
-		return fmt.Sprintf("Target: %s\n\n%s\n%s",
+		// TODO: Add PR count when GitHub integration is active
+		// prCount := "Open PRs: 0"
+		// if m.githubEnabled {
+		//     prCount = fmt.Sprintf("Open PRs: %d", m.openPRCount)
+		// }
+
+		return fmt.Sprintf("Target: %s\n\n%s\n\n%s",
 			lipgloss.NewStyle().Foreground(styles.ColorSecondary).Bold(true).Render(parent),
 			status,
-			lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("Press Enter to merge"))
+			lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("Press Enter for options"))
 	}
 
 	return fmt.Sprintf("%s\n\n%s",
@@ -1057,7 +1063,7 @@ func (m DashboardModel) renderHelpMenu() string {
 	lines = append(lines, styles.StatusInfo.Render("Cards:"))
 	lines = append(lines, styles.SubmenuOption.Render("  Repository       View current status"))
 	lines = append(lines, styles.SubmenuOption.Render("  Commit           Analyze & commit changes"))
-	lines = append(lines, styles.SubmenuOption.Render("  Merge            Merge to parent branch"))
+	lines = append(lines, styles.SubmenuOption.Render("  Merge/PR         Merge branches or create PRs"))
 	lines = append(lines, styles.SubmenuOption.Render("  Recent Commits   Browse commit history"))
 	lines = append(lines, styles.SubmenuOption.Render("  Branches         Switch branches"))
 	lines = append(lines, styles.SubmenuOption.Render("  Quick Actions    This help menu"))

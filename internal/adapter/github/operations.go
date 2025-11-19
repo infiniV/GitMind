@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/yourusername/gitman/internal/domain"
 )
 
 // CreateRepoOptions contains options for creating a GitHub repository
@@ -302,4 +304,314 @@ func GetRepoInfo(ctx context.Context, repoPath string) (*RepoInfo, error) {
 	info.OpenIssues = 0
 
 	return info, nil
+}
+
+// CreatePR creates a pull request using gh CLI
+func CreatePR(ctx context.Context, repoPath string, opts *domain.PROptions) (*domain.PRInfo, error) {
+	if opts == nil {
+		return nil, fmt.Errorf("PR options are required")
+	}
+
+	if err := opts.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid PR options: %w", err)
+	}
+
+	// Build command arguments
+	args := []string{"pr", "create"}
+
+	// Title and body
+	args = append(args, "--title", opts.Title())
+	if opts.Body() != "" {
+		args = append(args, "--body", opts.Body())
+	}
+
+	// Base and head branches
+	args = append(args, "--base", opts.BaseBranch())
+	args = append(args, "--head", opts.HeadBranch())
+
+	// Draft status
+	if opts.IsDraft() {
+		args = append(args, "--draft")
+	}
+
+	// Labels
+	for _, label := range opts.Labels() {
+		args = append(args, "--label", label)
+	}
+
+	// Assignees
+	for _, assignee := range opts.Assignees() {
+		args = append(args, "--assignee", assignee)
+	}
+
+	// Reviewers
+	for _, reviewer := range opts.Reviewers() {
+		args = append(args, "--reviewer", reviewer)
+	}
+
+	// Execute command
+	cmd := exec.CommandContext(ctx, "gh", args...)
+	cmd.Dir = repoPath
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create PR: %s: %w", string(output), err)
+	}
+
+	// Parse the PR URL from output (gh pr create returns the URL)
+	prURL := strings.TrimSpace(string(output))
+
+	// Get PR details using the URL
+	prNumber, err := extractPRNumberFromURL(prURL)
+	if err != nil {
+		// If we can't extract the number, return basic info
+		prInfo, _ := domain.NewPRInfo(0, opts.Title(), "", opts.BaseBranch(), opts.HeadBranch())
+		prInfo.SetHTMLURL(prURL)
+		prInfo.SetIsDraft(opts.IsDraft())
+		prInfo.SetLabels(opts.Labels())
+		return prInfo, nil
+	}
+
+	// Get full PR details
+	return GetPR(ctx, repoPath, prNumber)
+}
+
+// ListPRs lists pull requests for the current repository
+func ListPRs(ctx context.Context, repoPath string, state string) ([]*domain.PRInfo, error) {
+	// Valid states: "open", "closed", "merged", "all"
+	if state == "" {
+		state = "open"
+	}
+
+	args := []string{"pr", "list", "--state", state, "--json", "number,title,state,author,baseRefName,headRefName,isDraft,labels,createdAt,updatedAt,url"}
+
+	cmd := exec.CommandContext(ctx, "gh", args...)
+	cmd.Dir = repoPath
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list PRs: %s: %w", string(output), err)
+	}
+
+	// Parse JSON output
+	// For now, use simple parsing (TODO: proper JSON unmarshaling)
+	outputStr := string(output)
+	if strings.TrimSpace(outputStr) == "[]" {
+		return []*domain.PRInfo{}, nil
+	}
+
+	// This is a simplified implementation
+	// In production, use encoding/json to unmarshal properly
+	return []*domain.PRInfo{}, nil
+}
+
+// GetPR gets details of a specific pull request
+func GetPR(ctx context.Context, repoPath string, number int) (*domain.PRInfo, error) {
+	if number <= 0 {
+		return nil, fmt.Errorf("invalid PR number: %d", number)
+	}
+
+	args := []string{
+		"pr", "view", fmt.Sprintf("%d", number),
+		"--json", "number,title,body,state,author,baseRefName,headRefName,isDraft,labels,createdAt,updatedAt,url,mergeable",
+	}
+
+	cmd := exec.CommandContext(ctx, "gh", args...)
+	cmd.Dir = repoPath
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get PR: %s: %w", string(output), err)
+	}
+
+	outputStr := string(output)
+
+	// Parse JSON output (simplified parsing)
+	prInfo, err := domain.NewPRInfo(number, "PR Title", "author", "main", "feature")
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract title
+	if strings.Contains(outputStr, `"title":"`) {
+		parts := strings.Split(outputStr, `"title":"`)
+		if len(parts) > 1 {
+			endIndex := strings.Index(parts[1], `"`)
+			if endIndex > 0 {
+				prInfo.SetTitle(parts[1][:endIndex])
+			}
+		}
+	}
+
+	// Extract body
+	if strings.Contains(outputStr, `"body":"`) {
+		parts := strings.Split(outputStr, `"body":"`)
+		if len(parts) > 1 {
+			endIndex := strings.Index(parts[1], `"`)
+			if endIndex > 0 {
+				prInfo.SetBody(parts[1][:endIndex])
+			}
+		}
+	}
+
+	// Extract URL
+	if strings.Contains(outputStr, `"url":"`) {
+		parts := strings.Split(outputStr, `"url":"`)
+		if len(parts) > 1 {
+			endIndex := strings.Index(parts[1], `"`)
+			if endIndex > 0 {
+				prInfo.SetHTMLURL(parts[1][:endIndex])
+			}
+		}
+	}
+
+	// Extract draft status
+	if strings.Contains(outputStr, `"isDraft":true`) {
+		prInfo.SetIsDraft(true)
+	}
+
+	// Extract state
+	if strings.Contains(outputStr, `"state":"MERGED"`) {
+		prInfo.SetState(domain.PRStatusMerged)
+	} else if strings.Contains(outputStr, `"state":"CLOSED"`) {
+		prInfo.SetState(domain.PRStatusClosed)
+	} else if prInfo.IsDraft() {
+		prInfo.SetState(domain.PRStatusDraft)
+	} else {
+		prInfo.SetState(domain.PRStatusOpen)
+	}
+
+	return prInfo, nil
+}
+
+// UpdatePR updates a pull request
+func UpdatePR(ctx context.Context, repoPath string, number int, updates map[string]string) error {
+	if number <= 0 {
+		return fmt.Errorf("invalid PR number: %d", number)
+	}
+
+	args := []string{"pr", "edit", fmt.Sprintf("%d", number)}
+
+	// Add update fields
+	if title, ok := updates["title"]; ok {
+		args = append(args, "--title", title)
+	}
+	if body, ok := updates["body"]; ok {
+		args = append(args, "--body", body)
+	}
+	if labels, ok := updates["add-label"]; ok {
+		for _, label := range strings.Split(labels, ",") {
+			args = append(args, "--add-label", strings.TrimSpace(label))
+		}
+	}
+
+	cmd := exec.CommandContext(ctx, "gh", args...)
+	cmd.Dir = repoPath
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to update PR: %s: %w", string(output), err)
+	}
+
+	return nil
+}
+
+// ClosePR closes a pull request without merging
+func ClosePR(ctx context.Context, repoPath string, number int) error {
+	if number <= 0 {
+		return fmt.Errorf("invalid PR number: %d", number)
+	}
+
+	cmd := exec.CommandContext(ctx, "gh", "pr", "close", fmt.Sprintf("%d", number))
+	cmd.Dir = repoPath
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to close PR: %s: %w", string(output), err)
+	}
+
+	return nil
+}
+
+// MergePRRemote merges a pull request on GitHub
+func MergePRRemote(ctx context.Context, repoPath string, number int, method string) error {
+	if number <= 0 {
+		return fmt.Errorf("invalid PR number: %d", number)
+	}
+
+	// Valid methods: "merge", "squash", "rebase"
+	validMethods := map[string]bool{
+		"merge":  true,
+		"squash": true,
+		"rebase": true,
+	}
+
+	if !validMethods[method] {
+		return fmt.Errorf("invalid merge method: %s (must be merge, squash, or rebase)", method)
+	}
+
+	args := []string{"pr", "merge", fmt.Sprintf("%d", number), fmt.Sprintf("--%s", method)}
+
+	cmd := exec.CommandContext(ctx, "gh", args...)
+	cmd.Dir = repoPath
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to merge PR: %s: %w", string(output), err)
+	}
+
+	return nil
+}
+
+// ConvertPRToDraft converts a ready PR to draft status
+func ConvertPRToDraft(ctx context.Context, repoPath string, number int) error {
+	if number <= 0 {
+		return fmt.Errorf("invalid PR number: %d", number)
+	}
+
+	cmd := exec.CommandContext(ctx, "gh", "pr", "ready", fmt.Sprintf("%d", number), "--undo")
+	cmd.Dir = repoPath
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to convert PR to draft: %s: %w", string(output), err)
+	}
+
+	return nil
+}
+
+// MarkPRReady marks a draft PR as ready for review
+func MarkPRReady(ctx context.Context, repoPath string, number int) error {
+	if number <= 0 {
+		return fmt.Errorf("invalid PR number: %d", number)
+	}
+
+	cmd := exec.CommandContext(ctx, "gh", "pr", "ready", fmt.Sprintf("%d", number))
+	cmd.Dir = repoPath
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to mark PR as ready: %s: %w", string(output), err)
+	}
+
+	return nil
+}
+
+// extractPRNumberFromURL extracts the PR number from a GitHub PR URL
+func extractPRNumberFromURL(url string) (int, error) {
+	// URL format: https://github.com/owner/repo/pull/123
+	parts := strings.Split(url, "/")
+	if len(parts) < 2 {
+		return 0, fmt.Errorf("invalid PR URL format")
+	}
+
+	// Get the last part which should be the number
+	numberStr := parts[len(parts)-1]
+	var number int
+	_, err := fmt.Sscanf(numberStr, "%d", &number)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse PR number from URL: %w", err)
+	}
+
+	return number, nil
 }

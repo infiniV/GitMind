@@ -159,7 +159,7 @@ func CommitFooter(state string, metadata string, width int) string {
 	return footer.WithMetadata(metadata).WithWidth(width).Render()
 }
 
-// MergeFooter creates a footer for the merge view
+// MergeFooter creates a footer for the merge/PR view
 func MergeFooter(state string, metadata string, width int) string {
 	var shortcuts []Shortcut
 
@@ -170,14 +170,18 @@ func MergeFooter(state string, metadata string, width int) string {
 		}
 	case "selecting":
 		shortcuts = []Shortcut{
-			{Key: "↑↓", Description: "select strategy"},
-			{Key: "enter", Description: "merge"},
+			{Key: "↑↓", Description: "navigate"},
+			{Key: "enter", Description: "select"},
+			{Key: "l", Description: "list PRs"},
+			{Key: "c", Description: "create PR"},
 			{Key: "esc", Description: "cancel"},
 		}
 	default:
 		shortcuts = []Shortcut{
 			{Key: "↑↓", Description: "navigate"},
-			{Key: "enter", Description: "merge"},
+			{Key: "enter", Description: "select"},
+			{Key: "l", Description: "list PRs"},
+			{Key: "c", Description: "create PR"},
 			{Key: "esc", Description: "back"},
 		}
 	}

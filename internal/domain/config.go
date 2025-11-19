@@ -25,13 +25,19 @@ type GitConfig struct {
 
 // GitHubConfig holds GitHub integration settings
 type GitHubConfig struct {
-	Enabled          bool   `json:"enabled"`
-	DefaultVisibility string `json:"default_visibility"` // "public" or "private"
-	DefaultLicense   string `json:"default_license"`
-	DefaultGitIgnore string `json:"default_gitignore"`
-	EnableIssues     bool   `json:"enable_issues"`
-	EnableWiki       bool   `json:"enable_wiki"`
-	EnableProjects   bool   `json:"enable_projects"`
+	Enabled           bool     `json:"enabled"`
+	DefaultVisibility string   `json:"default_visibility"` // "public" or "private"
+	DefaultLicense    string   `json:"default_license"`
+	DefaultGitIgnore  string   `json:"default_gitignore"`
+	EnableIssues      bool     `json:"enable_issues"`
+	EnableWiki        bool     `json:"enable_wiki"`
+	EnableProjects    bool     `json:"enable_projects"`
+	// PR Configuration
+	PRDefaultBase      string   `json:"pr_default_base"`       // Default base branch for PRs
+	PRUseTemplate      bool     `json:"pr_use_template"`       // Load .github/PULL_REQUEST_TEMPLATE.md
+	PRDefaultDraft     bool     `json:"pr_default_draft"`      // Create PRs as draft by default
+	PRDefaultLabels    []string `json:"pr_default_labels"`     // Auto-apply labels to new PRs
+	PRAutoDeleteBranch bool     `json:"pr_auto_delete_branch"` // Delete branch after PR merge
 }
 
 // CommitsConfig holds commit convention settings
@@ -77,13 +83,18 @@ func NewDefaultConfig() *Config {
 			AutoPull:          false,
 		},
 		GitHub: GitHubConfig{
-			Enabled:          false,
-			DefaultVisibility: "public",
-			DefaultLicense:   "MIT",
-			DefaultGitIgnore: "Go",
-			EnableIssues:     true,
-			EnableWiki:       false,
-			EnableProjects:   false,
+			Enabled:            false,
+			DefaultVisibility:  "public",
+			DefaultLicense:     "MIT",
+			DefaultGitIgnore:   "Go",
+			EnableIssues:       true,
+			EnableWiki:         false,
+			EnableProjects:     false,
+			PRDefaultBase:      "main",
+			PRUseTemplate:      true,
+			PRDefaultDraft:     false,
+			PRDefaultLabels:    []string{},
+			PRAutoDeleteBranch: false,
 		},
 		Commits: CommitsConfig{
 			Convention:      "conventional",

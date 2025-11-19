@@ -46,6 +46,10 @@ type SettingsView struct {
 	ghEnableIssues      Checkbox
 	ghEnableWiki        Checkbox
 	ghEnableProjects    Checkbox
+	// PR settings fields
+	ghPRUseTemplate      Checkbox
+	ghPRDefaultDraft     Checkbox
+	ghPRAutoDeleteBranch Checkbox
 
 	// Commits settings fields
 	commitConvention      RadioGroup
@@ -208,6 +212,10 @@ func NewSettingsView(cfg *domain.Config, cfgManager *config.Manager) *SettingsVi
 		ghEnableIssues:      NewCheckbox("Enable Issues by default", cfg.GitHub.EnableIssues),
 		ghEnableWiki:        NewCheckbox("Enable Wiki by default", cfg.GitHub.EnableWiki),
 		ghEnableProjects:    NewCheckbox("Enable Projects by default", cfg.GitHub.EnableProjects),
+		// PR settings
+		ghPRUseTemplate:      NewCheckbox("Load PR template (.github/PULL_REQUEST_TEMPLATE.md)", cfg.GitHub.PRUseTemplate),
+		ghPRDefaultDraft:     NewCheckbox("Create PRs as draft by default", cfg.GitHub.PRDefaultDraft),
+		ghPRAutoDeleteBranch: NewCheckbox("Auto-delete branch after PR merge", cfg.GitHub.PRAutoDeleteBranch),
 
 		// Commits
 		commitConvention: NewRadioGroup("Convention", []string{
@@ -349,7 +357,7 @@ func (m SettingsView) getMaxFields() int {
 	case SettingsGit:
 		return 6 // 5 fields + save button
 	case SettingsGitHub:
-		return 8
+		return 11
 	case SettingsCommits:
 		return 6
 	case SettingsNaming:
@@ -395,6 +403,12 @@ func (m *SettingsView) handleFieldInteraction() {
 			m.ghEnableWiki.Checked = !m.ghEnableWiki.Checked
 		case 6:
 			m.ghEnableProjects.Checked = !m.ghEnableProjects.Checked
+		case 7:
+			m.ghPRUseTemplate.Checked = !m.ghPRUseTemplate.Checked
+		case 8:
+			m.ghPRDefaultDraft.Checked = !m.ghPRDefaultDraft.Checked
+		case 9:
+			m.ghPRAutoDeleteBranch.Checked = !m.ghPRAutoDeleteBranch.Checked
 		}
 
 	case SettingsCommits:
@@ -639,6 +653,10 @@ func (m *SettingsView) updateConfigFromFields() {
 	m.cfg.GitHub.EnableIssues = m.ghEnableIssues.Checked
 	m.cfg.GitHub.EnableWiki = m.ghEnableWiki.Checked
 	m.cfg.GitHub.EnableProjects = m.ghEnableProjects.Checked
+	// PR settings
+	m.cfg.GitHub.PRUseTemplate = m.ghPRUseTemplate.Checked
+	m.cfg.GitHub.PRDefaultDraft = m.ghPRDefaultDraft.Checked
+	m.cfg.GitHub.PRAutoDeleteBranch = m.ghPRAutoDeleteBranch.Checked
 
 	// Commits
 	switch m.commitConvention.Selected {
@@ -908,9 +926,20 @@ func (m SettingsView) renderGitHubSettings() string {
 	lines = append(lines, row)
 	lines = append(lines, "")
 
+	// PR Settings
+	lines = append(lines, styles.FormLabel.Render("Pull Request Options:"))
+	m.ghPRUseTemplate.Focused = (m.focusedField == 7)
+	m.ghPRDefaultDraft.Focused = (m.focusedField == 8)
+	m.ghPRAutoDeleteBranch.Focused = (m.focusedField == 9)
+
+	lines = append(lines, m.ghPRUseTemplate.View())
+	lines = append(lines, m.ghPRDefaultDraft.View())
+	lines = append(lines, m.ghPRAutoDeleteBranch.View())
+	lines = append(lines, "")
+
 	// Save button
 	saveBtn := NewButton("Save Changes")
-	saveBtn.Focused = (m.focusedField == 7)
+	saveBtn.Focused = (m.focusedField == 10)
 	lines = append(lines, saveBtn.View())
 
 	return strings.Join(lines, "\n")

@@ -42,6 +42,7 @@ type AnalyzeMergeResponse struct {
 	Conflicts         []string
 	SuggestedStrategy string
 	MergeMessage      *domain.CommitMessage
+	SuggestedPR       *domain.PROptions // AI-suggested PR options (alternative to direct merge)
 	Reasoning         string
 	TokensUsed        int
 	Model             string
@@ -170,6 +171,53 @@ func (uc *AnalyzeMergeUseCase) Execute(ctx context.Context, req AnalyzeMergeRequ
 		return nil, fmt.Errorf("failed to generate merge message: %w", err)
 	}
 
+	// Generate suggested PR options as an alternative to direct merge
+	// AI logic: Suggest PR when changes are significant, need review, or involve protected branches
+	var suggestedPR *domain.PROptions
+
+	// Heuristics for when to suggest PR:
+	// 1. Many commits (>3)
+	// 2. Merging to protected branch
+	// 3. Has conflicts
+	// 4. Complex changes (detected by AI or commit count)
+	shouldSuggestPR := len(commits) > 3 || len(conflicts) > 0 || isProtectedBranch(targetBranch, req.ProtectedBranches)
+
+	if shouldSuggestPR {
+		// Build PR title from merge message
+		prTitle := fmt.Sprintf("Merge %s into %s", sourceBranch, targetBranch)
+		if mergeMessageResp.MergeMessage != nil && mergeMessageResp.MergeMessage.Title() != "" {
+			prTitle = mergeMessageResp.MergeMessage.Title()
+		}
+
+		// Build PR body from commits
+		prBody := fmt.Sprintf("This PR merges %d commit(s) from %s into %s.\n\n", len(commits), sourceBranch, targetBranch)
+		if mergeMessageResp.MergeMessage != nil && mergeMessageResp.MergeMessage.Body() != "" {
+			prBody += mergeMessageResp.MergeMessage.Body() + "\n\n"
+		}
+		prBody += "## Commits\n"
+		for i, commit := range commits {
+			if i < 10 { // Limit to first 10 commits
+				prBody += fmt.Sprintf("- %s\n", commit.Message)
+			}
+		}
+		if len(commits) > 10 {
+			prBody += fmt.Sprintf("\n...and %d more commits\n", len(commits)-10)
+		}
+
+		prOpts, err := domain.NewPROptions(prTitle, targetBranch, sourceBranch)
+		if err == nil {
+			prOpts.SetBody(prBody)
+			prOpts.SetUseTemplate(true)
+
+			// Suggest draft if there are conflicts
+			if len(conflicts) > 0 {
+				prOpts.SetIsDraft(true)
+			}
+
+			suggestedPR = prOpts
+		}
+	}
+
 	return &AnalyzeMergeResponse{
 		SourceBranchInfo:  sourceBranchInfo,
 		TargetBranch:      targetBranch,
@@ -179,8 +227,19 @@ func (uc *AnalyzeMergeUseCase) Execute(ctx context.Context, req AnalyzeMergeRequ
 		Conflicts:         conflicts,
 		SuggestedStrategy: mergeMessageResp.SuggestedStrategy,
 		MergeMessage:      mergeMessageResp.MergeMessage,
+		SuggestedPR:       suggestedPR,
 		Reasoning:         mergeMessageResp.Reasoning,
 		TokensUsed:        mergeMessageResp.TokensUsed,
 		Model:             mergeMessageResp.Model,
 	}, nil
+}
+
+// isProtectedBranch checks if a branch is in the protected branches list.
+func isProtectedBranch(branch string, protectedBranches []string) bool {
+	for _, protected := range protectedBranches {
+		if branch == protected {
+			return true
+		}
+	}
+	return false
 }
