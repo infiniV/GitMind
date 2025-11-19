@@ -174,6 +174,11 @@ type mergeExecutionMsg struct {
 	err error
 }
 
+type prExecutionMsg struct {
+	prInfo *domain.PRInfo
+	err    error
+}
+
 type loadingTickMsg time.Time
 
 // Init initializes the application
@@ -406,6 +411,17 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			PrintError(fmt.Sprintf("Merge failed: %v", msg.err))
 		} else {
 			PrintSuccess("Merge successful!")
+		}
+		// Return to dashboard
+		m.state = StateDashboard
+		return m, m.dashboard.Init()
+
+	case prExecutionMsg:
+		if msg.err != nil {
+			PrintError(fmt.Sprintf("PR creation failed: %v", msg.err))
+		} else {
+			PrintSuccess(fmt.Sprintf("Pull request #%d created successfully!", msg.prInfo.Number()))
+			PrintInfo(fmt.Sprintf("URL: %s", msg.prInfo.HTMLURL()))
 		}
 		// Return to dashboard
 		m.state = StateDashboard
@@ -667,6 +683,20 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.mergeView.HasDecision() {
 			strategy := m.mergeView.GetSelectedStrategy()
 			message := m.mergeView.GetMergeMessage()
+
+			// Check if this is a PR creation instead of merge
+			if strategy == "pr-ready" || strategy == "pr-draft" {
+				m.state = StateMergeExecuting
+				m.loadingMessage = "Creating pull request"
+				return m, tea.Batch(
+					m.executePR(strategy, message),
+					tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
+						return loadingTickMsg(t)
+					}),
+				)
+			}
+
+			// Regular merge execution
 			m.state = StateMergeExecuting
 			m.loadingMessage = "Executing merge"
 			return m, tea.Batch(
@@ -1110,5 +1140,48 @@ func (m AppModel) executeMerge(strategy string, message string) tea.Cmd {
 		_, err := executeUC.Execute(ctx, req)
 
 		return mergeExecutionMsg{err: err}
+	}
+}
+
+// executePR creates a pull request
+func (m AppModel) executePR(strategy string, message string) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+
+		// Create execute PR use case
+		executePRUC := usecase.NewExecutePRUseCase(m.gitOps)
+
+		// Build PR options from analysis
+		prOpts := m.mergeAnalysisResult.SuggestedPR
+		if prOpts == nil {
+			// Fallback: create from merge message
+			prOpts, _ = domain.NewPROptions(
+				message,
+				m.mergeAnalysisResult.TargetBranch,
+				m.mergeAnalysisResult.SourceBranchInfo.Name(),
+			)
+		} else {
+			// Use suggested PR but update title if user edited the message
+			if message != "" {
+				prOpts.SetTitle(message)
+			}
+		}
+
+		// Set draft status based on strategy
+		prOpts.SetIsDraft(strategy == "pr-draft")
+
+		// Execute PR creation
+		resp, err := executePRUC.Execute(ctx, usecase.ExecutePRRequest{
+			RepoPath:     m.repoPath,
+			PROptions:    prOpts,
+			AutoPush:     true,
+			LoadTemplate: m.cfg.GitHub.PRUseTemplate,
+		})
+
+		if err != nil {
+			return prExecutionMsg{err: err}
+		}
+
+		return prExecutionMsg{prInfo: resp.PRInfo, err: nil}
 	}
 }
