@@ -173,7 +173,6 @@ func MergeFooter(state string, metadata string, width int) string {
 			{Key: "↑↓", Description: "navigate"},
 			{Key: "enter", Description: "select"},
 			{Key: "l", Description: "list PRs"},
-			{Key: "c", Description: "create PR"},
 			{Key: "esc", Description: "cancel"},
 		}
 	default:
@@ -181,7 +180,6 @@ func MergeFooter(state string, metadata string, width int) string {
 			{Key: "↑↓", Description: "navigate"},
 			{Key: "enter", Description: "select"},
 			{Key: "l", Description: "list PRs"},
-			{Key: "c", Description: "create PR"},
 			{Key: "esc", Description: "back"},
 		}
 	}

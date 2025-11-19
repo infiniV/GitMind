@@ -45,6 +45,10 @@ const (
 	StateMergeAnalyzing
 	StateMergeView
 	StateMergeExecuting
+	StatePRListing
+	StatePRList
+	StatePRDetail
+	StatePRManaging
 	StateOnboarding
 )
 
@@ -68,6 +72,8 @@ type AppModel struct {
 	dashboard      *DashboardModel
 	commitView     *CommitViewModel
 	mergeView      *MergeViewModel
+	prListView     *PRListViewModel
+	prDetailView   *PRDetailViewModel
 	settingsView   *SettingsView
 	onboardingView *OnboardingModel
 
@@ -95,6 +101,8 @@ type AppModel struct {
 	commitAnalysisError  error
 	mergeAnalysisResult  *usecase.AnalyzeMergeResponse
 	mergeAnalysisError   error
+	prListResult         *usecase.ListPRResponse
+	prListError          error
 
 	// Action parameters from dashboard
 	actionParams map[string]interface{}
@@ -172,6 +180,22 @@ type commitExecutionMsg struct {
 
 type mergeExecutionMsg struct {
 	err error
+}
+
+type prExecutionMsg struct {
+	prInfo *domain.PRInfo
+	err    error
+}
+
+type prListMsg struct {
+	result *usecase.ListPRResponse
+	err    error
+}
+
+type prActionMsg struct {
+	success bool
+	message string
+	err     error
 }
 
 type loadingTickMsg time.Time
@@ -411,9 +435,47 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state = StateDashboard
 		return m, m.dashboard.Init()
 
+	case prExecutionMsg:
+		if msg.err != nil {
+			PrintError(fmt.Sprintf("PR creation failed: %v", msg.err))
+		} else {
+			PrintSuccess(fmt.Sprintf("Pull request #%d created successfully!", msg.prInfo.Number()))
+			PrintInfo(fmt.Sprintf("URL: %s", msg.prInfo.HTMLURL()))
+		}
+		// Return to dashboard
+		m.state = StateDashboard
+		return m, m.dashboard.Init()
+
+	case prListMsg:
+		m.loadingMessage = ""
+		if msg.err != nil {
+			m.prListError = msg.err
+			m.state = StateDashboard
+			PrintError(fmt.Sprintf("Failed to list PRs: %v", msg.err))
+			return m, m.dashboard.Init()
+		}
+		m.prListResult = msg.result
+		m.prListError = nil
+
+		// Transition to PR list view
+		m.state = StatePRList
+		prListView := NewPRListViewModel(msg.result.PRs)
+		m.prListView = &prListView
+		return m, m.prListView.Init()
+
+	case prActionMsg:
+		if msg.err != nil {
+			PrintError(fmt.Sprintf("PR action failed: %v", msg.err))
+		} else {
+			PrintSuccess(msg.message)
+		}
+		// Return to dashboard (refresh PR list)
+		m.state = StateDashboard
+		return m, m.dashboard.Init()
+
 	case loadingTickMsg:
 		// Animate loading dots
-		if m.state == StateCommitAnalyzing || m.state == StateMergeAnalyzing || m.state == StateCommitExecuting || m.state == StateMergeExecuting {
+		if m.state == StateCommitAnalyzing || m.state == StateMergeAnalyzing || m.state == StateCommitExecuting || m.state == StateMergeExecuting || m.state == StatePRListing || m.state == StatePRManaging {
 			m.loadingDots = (m.loadingDots + 1) % 4
 			return m, tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
 				return loadingTickMsg(t)
@@ -468,6 +530,21 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.loadingMessage = "Analyzing merge with AI"
 			return m, tea.Batch(
 				m.startMergeAnalysis(params),
+				tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
+					return loadingTickMsg(t)
+				}),
+			)
+
+		case ActionListPRs:
+			// List pull requests
+			filter, _ := params["filter"].(string)
+			if filter == "" {
+				filter = "all"
+			}
+			m.state = StatePRListing
+			m.loadingMessage = "Loading pull requests"
+			return m, tea.Batch(
+				m.listPRs(filter),
 				tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
 					return loadingTickMsg(t)
 				}),
@@ -663,14 +740,99 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.dashboard.Init()
 		}
 
+		// Check if user wants to list PRs
+		if m.mergeView.ShouldListPRs() {
+			m.state = StatePRListing
+			m.loadingMessage = "Loading pull requests"
+			return m, tea.Batch(
+				m.listPRs("all"),
+				tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
+					return loadingTickMsg(t)
+				}),
+			)
+		}
+
 		// Check if merge view has a decision
 		if m.mergeView.HasDecision() {
 			strategy := m.mergeView.GetSelectedStrategy()
 			message := m.mergeView.GetMergeMessage()
+
+			// Check if this is a PR creation instead of merge
+			if strategy == "pr-ready" || strategy == "pr-draft" {
+				m.state = StateMergeExecuting
+				m.loadingMessage = "Creating pull request"
+				return m, tea.Batch(
+					m.executePR(strategy, message),
+					tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
+						return loadingTickMsg(t)
+					}),
+				)
+			}
+
+			// Regular merge execution
 			m.state = StateMergeExecuting
 			m.loadingMessage = "Executing merge"
 			return m, tea.Batch(
 				m.executeMerge(strategy, message),
+				tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
+					return loadingTickMsg(t)
+				}),
+			)
+		}
+
+		return m, cmd
+
+	case StatePRList:
+		if m.prListView == nil {
+			return m, nil
+		}
+
+		updated, cmd := m.prListView.Update(msg)
+		prListModel := updated.(PRListViewModel)
+		m.prListView = &prListModel
+
+		// Check if PR list view wants to return to dashboard
+		if m.prListView.ShouldReturnToDashboard() {
+			m.state = StateDashboard
+			return m, m.dashboard.Init()
+		}
+
+		// Check if a PR should be viewed in detail
+		if m.prListView.ShouldViewPRDetail() {
+			pr := m.prListView.GetSelectedPR()
+			if pr != nil {
+				m.state = StatePRDetail
+				prDetailView := NewPRDetailViewModel(pr)
+				m.prDetailView = &prDetailView
+				return m, m.prDetailView.Init()
+			}
+		}
+
+		return m, cmd
+
+	case StatePRDetail:
+		if m.prDetailView == nil {
+			return m, nil
+		}
+
+		updated, cmd := m.prDetailView.Update(msg)
+		prDetailModel := updated.(PRDetailViewModel)
+		m.prDetailView = &prDetailModel
+
+		// Check if PR detail view wants to return to list
+		if m.prDetailView.ShouldReturnToList() {
+			m.state = StatePRList
+			return m, nil
+		}
+
+		// Check if an action should be executed
+		if m.prDetailView.HasAction() {
+			action := m.prDetailView.GetSelectedAction()
+			pr := m.prDetailView.GetPR()
+			m.state = StatePRManaging
+			m.loadingMessage = "Processing PR action"
+			return m, tea.Batch(
+				m.executePRAction(pr, action),
 				tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
 					return loadingTickMsg(t)
 				}),
@@ -715,6 +877,19 @@ func (m AppModel) View() string {
 		case StateMergeView:
 			if m.mergeView != nil {
 				overlayView = m.mergeView.View()
+			}
+
+		case StatePRListing, StatePRManaging:
+			overlayView = m.renderLoadingOverlay()
+
+		case StatePRList:
+			if m.prListView != nil {
+				overlayView = m.prListView.View()
+			}
+
+		case StatePRDetail:
+			if m.prDetailView != nil {
+				overlayView = m.prDetailView.View()
 			}
 		}
 
@@ -1110,5 +1285,108 @@ func (m AppModel) executeMerge(strategy string, message string) tea.Cmd {
 		_, err := executeUC.Execute(ctx, req)
 
 		return mergeExecutionMsg{err: err}
+	}
+}
+
+// listPRs fetches pull requests from GitHub
+func (m AppModel) listPRs(filter string) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+
+		// Create list PR use case
+		listPRUC := usecase.NewListPRUseCase()
+
+		// Build request
+		req := usecase.ListPRRequest{
+			RepoPath: m.repoPath,
+			State:    filter,
+		}
+
+		// Execute list PRs
+		resp, err := listPRUC.Execute(ctx, req)
+
+		if err != nil {
+			return prListMsg{err: err}
+		}
+
+		return prListMsg{result: resp, err: nil}
+	}
+}
+
+// executePR creates a pull request
+func (m AppModel) executePR(strategy string, message string) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+
+		// Create execute PR use case
+		executePRUC := usecase.NewExecutePRUseCase(m.gitOps)
+
+		// Build PR options from analysis
+		prOpts := m.mergeAnalysisResult.SuggestedPR
+		if prOpts == nil {
+			// Fallback: create from merge message
+			prOpts, _ = domain.NewPROptions(
+				message,
+				m.mergeAnalysisResult.TargetBranch,
+				m.mergeAnalysisResult.SourceBranchInfo.Name(),
+			)
+		} else {
+			// Use suggested PR but update title if user edited the message
+			if message != "" {
+				prOpts.SetTitle(message)
+			}
+		}
+
+		// Set draft status based on strategy
+		prOpts.SetIsDraft(strategy == "pr-draft")
+
+		// Execute PR creation
+		resp, err := executePRUC.Execute(ctx, usecase.ExecutePRRequest{
+			RepoPath:     m.repoPath,
+			PROptions:    prOpts,
+			AutoPush:     true,
+			LoadTemplate: m.cfg.GitHub.PRUseTemplate,
+		})
+
+		if err != nil {
+			return prExecutionMsg{err: err}
+		}
+
+		return prExecutionMsg{prInfo: resp.PRInfo, err: nil}
+	}
+}
+
+// executePRAction executes an action on a PR (update, close, merge, etc.)
+func (m AppModel) executePRAction(pr *domain.PRInfo, action domain.PRAction) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+
+		// Create manage PR use case
+		managePRUC := usecase.NewManagePRUseCase()
+
+		// Build request based on action
+		req := usecase.ManagePRRequest{
+			RepoPath: m.repoPath,
+			PRNumber: pr.Number(),
+			Action:   action,
+		}
+
+		// Add merge method if this is a merge action
+		if action == domain.PRActionMerge {
+			req.MergeMethod = "squash" // Default to squash
+		}
+
+		// Execute action
+		resp, err := managePRUC.Execute(ctx, req)
+
+		if err != nil {
+			return prActionMsg{success: false, err: err}
+		}
+
+		return prActionMsg{
+			success: true,
+			message: resp.Message,
+			err:     nil,
+		}
 	}
 }

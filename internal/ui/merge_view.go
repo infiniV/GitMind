@@ -19,6 +19,7 @@ type MergeViewModel struct {
 	confirmed         bool
 	returnToDashboard bool
 	hasDecision       bool
+	shouldListPRs     bool
 	err               error
 	viewport          viewport.Model
 	ready             bool
@@ -269,6 +270,11 @@ func (m MergeViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			m.msgInput.Focus()
 			return m, textinput.Blink
+
+		case "l", "L":
+			// List pull requests
+			m.shouldListPRs = true
+			return m, nil
 		}
 	}
 
@@ -541,6 +547,11 @@ func (m MergeViewModel) renderFooter() string {
 // ShouldReturnToDashboard returns true if the view should return to dashboard.
 func (m MergeViewModel) ShouldReturnToDashboard() bool {
 	return m.returnToDashboard
+}
+
+// ShouldListPRs returns true if the user wants to list PRs.
+func (m MergeViewModel) ShouldListPRs() bool {
+	return m.shouldListPRs
 }
 
 // HasDecision returns true if the user has made a decision.

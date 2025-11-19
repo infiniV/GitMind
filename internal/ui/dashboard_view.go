@@ -41,6 +41,7 @@ const (
 	ActionViewGitHub
 	ActionShowGitHubInfo
 	ActionSetupRemote
+	ActionListPRs
 )
 
 // DashboardModel represents the state of the dashboard view
@@ -195,6 +196,12 @@ func (m DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				fetchRecentCommits(m.gitOps, m.repoPath),
 			)
 
+		case "L":
+			// List PRs (uppercase L to avoid conflict with navigation)
+			if m.selectedCard == 2 { // Merge/PR card
+				return m.handleListPRs()
+			}
+
 		case "enter":
 			return m.handleCardActivation()
 		}
@@ -262,6 +269,15 @@ func (m DashboardModel) handleCardActivation() (tea.Model, tea.Cmd) {
 		m.activeSubmenu = HelpMenu
 	}
 
+	return m, nil
+}
+
+// handleListPRs signals that user wants to list PRs
+func (m DashboardModel) handleListPRs() (tea.Model, tea.Cmd) {
+	m.action = ActionListPRs
+	m.actionParams = map[string]interface{}{
+		"filter": "all",
+	}
 	return m, nil
 }
 
@@ -717,16 +733,11 @@ func (m DashboardModel) renderMergeCard() string {
 			status = fmt.Sprintf("%d commits ahead", m.branchInfo.CommitCount())
 		}
 
-		// TODO: Add PR count when GitHub integration is active
-		// prCount := "Open PRs: 0"
-		// if m.githubEnabled {
-		//     prCount = fmt.Sprintf("Open PRs: %d", m.openPRCount)
-		// }
-
-		return fmt.Sprintf("Target: %s\n\n%s\n\n%s",
+		return fmt.Sprintf("Target: %s\n\n%s\n\n%s\n%s",
 			lipgloss.NewStyle().Foreground(styles.ColorSecondary).Bold(true).Render(parent),
 			status,
-			lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("Press Enter for options"))
+			lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("Enter: Merge • L: List PRs"),
+			lipgloss.NewStyle().Foreground(styles.ColorMuted).Italic(true).Render("(PR management available)"))
 	}
 
 	return fmt.Sprintf("%s\n\n%s",

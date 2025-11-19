@@ -41,8 +41,10 @@ func (s PRStatus) String() string {
 type PRAction int
 
 const (
+	// PRActionNone represents no action (view-only).
+	PRActionNone PRAction = iota
 	// PRActionCreate creates a new pull request.
-	PRActionCreate PRAction = iota
+	PRActionCreate
 	// PRActionUpdate updates an existing pull request.
 	PRActionUpdate
 	// PRActionClose closes a pull request without merging.
@@ -58,6 +60,8 @@ const (
 // String returns the string representation of the PR action.
 func (a PRAction) String() string {
 	switch a {
+	case PRActionNone:
+		return "none"
 	case PRActionCreate:
 		return "create"
 	case PRActionUpdate:
