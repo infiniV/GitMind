@@ -887,11 +887,12 @@ func (m AppModel) renderConfirmationDialog() string {
 	)
 
 	// Create a modal box with primary color background
+	theme := GetGlobalThemeManager().GetCurrentTheme()
 	modalStyle := lipgloss.NewStyle().
 		Padding(2, 4).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(styles.ColorPrimary).
-		Background(lipgloss.Color("#1a1a1a")). // Dark background
+		Background(lipgloss.Color(theme.Backgrounds.Confirmation)).
 		Width(60)
 
 	return "\n\n" + lipgloss.Place(

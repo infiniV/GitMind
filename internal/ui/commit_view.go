@@ -219,17 +219,9 @@ func (m CommitViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		innerWidth := cardWidth - 4
 		
 		viewportWidth := innerWidth - 2 // Account for padding
-		
-		// Calculate available height for viewport
-		// Fixed elements approx height:
-		// Header: 1
-		// Repo Info: 2
-		// Commit Msg: 4
-		// Actions Title: 2
-		// Footer: 2
-		// Padding/Margins: 4
-		// Total: ~15 lines
-		viewportHeight := msg.Height - 15
+
+		// Calculate available height for viewport using layout helper
+		viewportHeight := msg.Height - 15 // Logo + header + footer + margins
 		if viewportHeight < 5 {
 			viewportHeight = 5
 		}
@@ -679,11 +671,12 @@ func (m CommitViewModel) renderConfirmationModal() string {
 	)
 
 	// Create a modal box
+	theme := GetGlobalThemeManager().GetCurrentTheme()
 	modalStyle := lipgloss.NewStyle().
 		Padding(2, 4).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(styles.ColorPrimary).
-		Background(lipgloss.Color("#1a1a1a")). // Dark background
+		Background(lipgloss.Color(theme.Backgrounds.Confirmation)).
 		Width(70)
 
 	return lipgloss.Place(
