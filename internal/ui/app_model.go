@@ -100,9 +100,9 @@ type AppModel struct {
 	actionParams map[string]interface{}
 
 	// Confirmation dialog state
-	showingConfirmation    bool
-	confirmationMessage    string
-	confirmationCallback   func() tea.Cmd
+	showingConfirmation     bool
+	confirmationMessage     string
+	confirmationCallback    func() tea.Cmd
 	confirmationSelectedBtn int // 0 = No (default), 1 = Yes
 
 	// Error modal state
@@ -765,7 +765,7 @@ func (m AppModel) View() string {
 // renderLoadingOverlay renders a loading message overlay
 func (m AppModel) renderLoadingOverlay() string {
 	styles := GetGlobalThemeManager().GetStyles()
-	
+
 	// Title
 	title := lipgloss.NewStyle().
 		Bold(true).
@@ -794,7 +794,7 @@ func (m AppModel) renderLoadingOverlay() string {
 	}
 	// Pad dots to avoid layout jumping
 	dots = fmt.Sprintf("%-3s", dots)
-	
+
 	loadingText := styles.Loading.Render(m.loadingMessage + dots)
 
 	// Content
