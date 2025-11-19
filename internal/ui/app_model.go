@@ -112,7 +112,7 @@ type AppModel struct {
 
 // NewAppModel creates a new root application model
 func NewAppModel(gitOps git.Operations, aiProvider ai.Provider, cfg *domain.Config, cfgManager *config.Manager, repoPath, version string) AppModel {
-	dashboard := NewDashboardModel(gitOps, repoPath)
+	dashboard := NewDashboardModel(gitOps, repoPath, cfg)
 	dashboard.SetVersion(version)
 	githubOps := GitHubOps{}
 
@@ -599,7 +599,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			// Initialize dashboard
-			dashboard := NewDashboardModel(m.gitOps, m.repoPath)
+			dashboard := NewDashboardModel(m.gitOps, m.repoPath, m.cfg)
 			dashboard.SetVersion(m.version)
 			m.dashboard = &dashboard
 
