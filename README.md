@@ -1,4 +1,4 @@
-# GitMind (gm)
+# GitMind
 
 An AI-powered Git CLI manager that makes complex Git workflows simple through intelligent automation.
 
@@ -30,7 +30,7 @@ An AI-powered Git CLI manager that makes complex Git workflows simple through in
 - **Windows Support**: Fully tested on Windows with compiled binary ready to use
 - **Cross-Platform**: Works on Windows, macOS, and Linux
 
-## 🚀 Quick Start
+## Quick Start
 
 **See [QUICKSTART.md](QUICKSTART.md) for detailed setup instructions!**
 
@@ -39,23 +39,23 @@ An AI-powered Git CLI manager that makes complex Git workflows simple through in
 1. **Get a free Cerebras API key**: https://cloud.cerebras.ai/
 2. **Build the binary**:
    ```bash
-   go build -o bin/gm.exe ./cmd/gm
+   go build -o bin/gitmind.exe ./cmd/gm
    # Or use the build script: scripts\build.bat
    ```
 3. **Run onboarding wizard** (first time setup):
    ```bash
-   bin\gm.exe onboard
+   bin\gitmind.exe onboard
    # Or just run any command - wizard starts automatically in new workspaces
-   bin\gm.exe commit
+   bin\gitmind.exe commit
    ```
 4. **Use the dashboard**:
    ```bash
-   bin\gm.exe
+   bin\gitmind.exe
    # Press 1 for Dashboard, 2 for Settings
    # Navigate with arrow keys, Enter to select
    ```
 
-## 🎨 UI Features
+## UI Features
 
 ### Onboarding Wizard
 The comprehensive 8-step onboarding wizard guides you through:
@@ -86,13 +86,13 @@ The comprehensive 8-step onboarding wizard guides you through:
 - `S`: Save settings
 - `Esc` / `Q`: Return to dashboard or quit
 
-## 📦 Installation
+## Installation
 
 ### Option 1: Build from Source (Current)
 ```bash
 git clone <this-repo>
 cd gitman
-go build -o gm.exe ./cmd/gm
+go build -o gitmind.exe ./cmd/gm
 ```
 
 ### Option 2: Download Release (Coming Soon)
@@ -102,10 +102,10 @@ Pre-built binaries will be available in GitHub Releases.
 ```bash
 # Scoop (planned)
 scoop bucket add gitman https://github.com/yourusername/scoop-gitman
-scoop install gitman
+scoop install gitmind
 
 # Chocolatey (planned)
-choco install gitman
+choco install gitmind
 ```
 
 ## Architecture
@@ -125,7 +125,7 @@ Built with Clean Architecture and Domain-Driven Design principles:
 
 ### Build
 ```bash
-go build -o gm ./cmd/gm
+go build -o gitmind ./cmd/gm
 ```
 
 ### Test
