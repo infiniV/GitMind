@@ -73,6 +73,10 @@ type DashboardModel struct {
 
 	// App info
 	version string
+
+	// Dimensions
+	width  int
+	height int
 }
 
 // Message types for async updates
@@ -135,6 +139,11 @@ func (m DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case errorMsg:
 		m.err = msg.err
 		m.loading = false
+		return m, nil
+
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
 		return m, nil
 
 	case tea.KeyMsg:
@@ -444,8 +453,8 @@ func (m DashboardModel) renderHeader() string {
 
 	// Line 2: Repository path
 	repoPath := m.repoPath
-	if len(repoPath) > 60 {
-		repoPath = "..." + repoPath[len(repoPath)-57:]
+	if len(repoPath) > 50 {
+		repoPath = "..." + repoPath[len(repoPath)-47:]
 	}
 	repoLine := lipgloss.NewStyle().
 		Foreground(styles.ColorText).
@@ -455,8 +464,8 @@ func (m DashboardModel) renderHeader() string {
 	// Line 3: Branch and status
 	if m.repo != nil {
 		branchName := m.repo.CurrentBranch()
-		if len(branchName) > 40 {
-			branchName = branchName[:37] + "..."
+		if len(branchName) > 30 {
+			branchName = branchName[:27] + "..."
 		}
 
 		statusText := ""
@@ -481,7 +490,7 @@ func (m DashboardModel) renderHeader() string {
 	// Combine logo and info sections
 	infoSection := strings.Join(infoLines, "\n")
 
-	// Center the info section vertically relative to the logo (6 lines)
+	// Center the info section vertically relative to the logo (5 lines)
 	// Info has 3 lines, so add padding
 	infoBlock := lipgloss.NewStyle().
 		PaddingLeft(4).
@@ -567,7 +576,7 @@ func (m DashboardModel) renderTopRow() string {
 	card1 := m.renderCard(1, "COMMIT", m.renderCommitCard())
 	card2 := m.renderCard(2, "MERGE", m.renderMergeCard())
 
-	return lipgloss.JoinHorizontal(lipgloss.Top, card0, " ", card1, " ", card2)
+	return lipgloss.JoinHorizontal(lipgloss.Top, card0, card1, card2)
 }
 
 // renderBottomRow renders the bottom 3 cards
@@ -576,7 +585,7 @@ func (m DashboardModel) renderBottomRow() string {
 	card4 := m.renderCard(4, "BRANCHES", m.renderBranchesCard())
 	card5 := m.renderCard(5, "QUICK ACTIONS", m.renderActionsCard())
 
-	return lipgloss.JoinHorizontal(lipgloss.Top, card3, " ", card4, " ", card5)
+	return lipgloss.JoinHorizontal(lipgloss.Top, card3, card4, card5)
 }
 
 // renderCard wraps content in a card with title
@@ -588,12 +597,25 @@ func (m DashboardModel) renderCard(index int, title, content string) string {
 		style = styles.DashboardCardActive
 	}
 
+	// Calculate dynamic width
+	cardWidth := 38 // Default fallback
+	if m.width > 0 {
+		// (Width - margins) / 3 columns
+		// We have 2 spaces between cards, and maybe some outer padding
+		availableWidth := m.width - 4
+		cardWidth = availableWidth / 3
+		if cardWidth < 30 {
+			cardWidth = 30
+		}
+	}
+
+	// Apply dimensions
+	style = style.Width(cardWidth).Height(12)
+
 	// Title at top
-	titleLine := styles.CardTitle.Render(title)
+	titleLine := styles.CardTitle.Copy().Width(cardWidth - 4).Render(title)
 
 	// Content
-	// We don't need to force height here as the style handles it,
-	// but we should ensure content doesn't overflow or look empty.
 	contentStyle := lipgloss.NewStyle().Foreground(styles.ColorMuted)
 	contentStr := contentStyle.Render(content)
 
@@ -622,7 +644,7 @@ func (m DashboardModel) renderRepoStatusCard() string {
 	if m.repo.HasChanges() {
 		stats := fmt.Sprintf("+%d -%d", m.repo.TotalAdditions(), m.repo.TotalDeletions())
 		lines = append(lines, fmt.Sprintf("%s %s",
-			styles.StatusWarning.Render("ℹ"),
+			styles.StatusWarning.Render("!"),
 			fmt.Sprintf("%d files changed (%s)", m.repo.TotalChanges(), stats)))
 	} else {
 		lines = append(lines, fmt.Sprintf("%s %s",
@@ -633,9 +655,9 @@ func (m DashboardModel) renderRepoStatusCard() string {
 	// Remote
 	if m.repo.HasRemote() {
 		syncStatus := m.repo.SyncStatusSummary()
-		icon := "☁"
+		icon := "⟷"
 		if m.repo.IsGitHubRemote() {
-			icon = "☁"
+			icon = "GH"
 		}
 
 		statusColor := styles.ColorMuted
@@ -650,7 +672,7 @@ func (m DashboardModel) renderRepoStatusCard() string {
 			lipgloss.NewStyle().Foreground(statusColor).Render(syncStatus)))
 	} else {
 		lines = append(lines, fmt.Sprintf("%s %s",
-			lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("☁"),
+			lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("∅"),
 			"No remote configured"))
 	}
 
@@ -703,7 +725,7 @@ func (m DashboardModel) renderMergeCard() string {
 	}
 
 	return fmt.Sprintf("%s\n\n%s",
-		"✗ No parent branch",
+		styles.StatusError.Render("✗ No parent branch"),
 		lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("Configure in settings"))
 }
 

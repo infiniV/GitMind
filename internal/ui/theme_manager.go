@@ -229,16 +229,16 @@ func (tm *ThemeManager) regenerateStyles() {
 	tm.styles.DashboardCard = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorBorder).
-		Padding(1, 2).
-		Width(38).
-		Height(10)
+		Padding(1, 1).
+		MarginRight(1).
+		MarginBottom(1)
 
 	tm.styles.DashboardCardActive = lipgloss.NewStyle().
-		Border(lipgloss.ThickBorder()).
+		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorSelected).
-		Padding(1, 2).
-		Width(38).
-		Height(10)
+		Padding(1, 1).
+		MarginRight(1).
+		MarginBottom(1)
 
 	tm.styles.CardTitle = lipgloss.NewStyle().
 		Bold(true).
@@ -247,7 +247,6 @@ func (tm *ThemeManager) regenerateStyles() {
 		BorderForeground(colorBorder).
 		PaddingBottom(1).
 		MarginBottom(1).
-		Width(34).
 		Align(lipgloss.Center)
 
 	// Status indicator styles
@@ -339,19 +338,21 @@ func (tm *ThemeManager) regenerateStyles() {
 
 	// Tab styles
 	tm.styles.TabActive = lipgloss.NewStyle().
-		Foreground(colorPrimary).
-		Bold(true).
-		Underline(true)
+		Foreground(colorText).
+		Background(colorPrimary).
+		Padding(0, 2).
+		Bold(true)
 
 	tm.styles.TabInactive = lipgloss.NewStyle().
-		Foreground(colorMuted)
+		Foreground(colorMuted).
+		Padding(0, 2)
 
 	tm.styles.TabBar = lipgloss.NewStyle().
 		BorderBottom(true).
-		BorderStyle(lipgloss.NormalBorder()).
+		BorderStyle(lipgloss.ThickBorder()).
 		BorderForeground(colorBorder).
 		MarginBottom(1).
-		PaddingLeft(1)
+		PaddingLeft(0)
 
 	// Form component styles
 	tm.styles.FormLabel = lipgloss.NewStyle().
