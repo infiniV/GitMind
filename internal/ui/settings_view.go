@@ -76,6 +76,10 @@ type SettingsView struct {
 	// State
 	hasChanges bool
 	saveStatus string
+
+	// Dimensions
+	width  int
+	height int
 }
 
 // NewSettingsView creates a new settings view
@@ -256,6 +260,12 @@ func (m SettingsView) Init() tea.Cmd {
 // Update handles messages for the settings view
 func (m SettingsView) Update(msg tea.Msg) (SettingsView, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		m.updateFieldWidths()
+		return m, nil
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "g", "G":
@@ -678,26 +688,49 @@ func (m *SettingsView) updateConfigFromFields() {
 	m.originalTheme = selectedTheme
 }
 
+// updateFieldWidths updates the width of input fields based on window width
+func (m *SettingsView) updateFieldWidths() {
+	// No-op: widths are now managed in render methods for grid layout
+}
+
 // View renders the settings view
 func (m SettingsView) View() string {
+	if m.width == 0 {
+		m.width = 120 // Default to a wider terminal if width is unknown
+	}
+
 	styles := GetGlobalThemeManager().GetStyles()
 	var sections []string
 
-	// Nested tab bar
+	// Header with tabs
 	tabBar := m.renderNestedTabBar()
 	sections = append(sections, tabBar)
 	sections = append(sections, "")
 
-	// Content based on current tab
+	// Content area
 	content := m.renderTabContent()
-	sections = append(sections, content)
+	
+	// Wrap content in a card-like container
+	contentWidth := m.width - 4 // padding
+	if contentWidth < 40 {
+		contentWidth = 40
+	}
+	
+	contentStyle := styles.DashboardCard.Copy().
+		Width(contentWidth)
+	
+	if m.height > 15 {
+		contentStyle = contentStyle.Height(m.height - 10)
+	}
+
+	sections = append(sections, contentStyle.Render(content))
 
 	// Changes indicator and save status
 	if m.hasChanges {
 		sections = append(sections, "")
 		sections = append(sections, lipgloss.NewStyle().
 			Foreground(styles.ColorWarning).
-			Render("* Unsaved changes"))
+			Render("  * Unsaved changes"))
 	}
 
 	if m.saveStatus != "" {
@@ -706,17 +739,17 @@ func (m SettingsView) View() string {
 		if strings.HasPrefix(m.saveStatus, "Error") {
 			statusStyle = lipgloss.NewStyle().Foreground(styles.ColorError)
 		}
-		sections = append(sections, statusStyle.Render(m.saveStatus))
+		sections = append(sections, "  "+statusStyle.Render(m.saveStatus))
 	}
-
-	sections = append(sections, "")
-	sections = append(sections, renderSeparator(70))
 
 	// Footer
 	footer := styles.Footer.Render(
-		styles.ShortcutKey.Render("G/H/C/N/A/U") + " " + styles.ShortcutDesc.Render("Switch Tab") + "  " +
-			styles.ShortcutKey.Render("Tab/↑↓") + " " + styles.ShortcutDesc.Render("Navigate") + "  " +
-			styles.ShortcutKey.Render("S") + " " + styles.ShortcutDesc.Render("Save"))
+		fmt.Sprintf("%s switch tab  •  %s navigate  •  %s save",
+			styles.ShortcutKey.Render("G/H/C/N/A/U"),
+			styles.ShortcutKey.Render("Tab/↑↓"),
+			styles.ShortcutKey.Render("S"),
+		),
+	)
 	sections = append(sections, footer)
 
 	return lipgloss.JoinVertical(lipgloss.Left, sections...)
@@ -740,15 +773,19 @@ func (m SettingsView) renderNestedTabBar() string {
 
 	for i, tab := range tabs {
 		var style lipgloss.Style
+		label := fmt.Sprintf(" [%s] %s ", tab.key, tab.name)
+		
 		if SettingsTab(i) == m.currentTab {
 			style = styles.TabActive
 		} else {
 			style = styles.TabInactive
 		}
-		tabViews = append(tabViews, style.Render(fmt.Sprintf(" [%s] %s ", tab.key, tab.name)))
+		tabViews = append(tabViews, style.Render(label))
 	}
 
-	return lipgloss.JoinHorizontal(lipgloss.Top, tabViews...)
+	// Join tabs with a bottom border line to simulate a real tab bar
+	row := lipgloss.JoinHorizontal(lipgloss.Top, tabViews...)
+	return styles.TabBar.Render(row)
 }
 
 // renderTabContent renders the content for the current tab
@@ -776,28 +813,40 @@ func (m SettingsView) renderGitSettings() string {
 	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
 
-	lines = append(lines, styles.FormLabel.Render("Git Configuration"))
+	lines = append(lines, styles.CardTitle.Copy().Align(lipgloss.Left).Render("Git Configuration"))
 	lines = append(lines, "")
 
-	// Main branch
+	inputWidth := m.width - 30
+	if inputWidth < 40 {
+		inputWidth = 40
+	}
+
+	// Main Branch
 	m.gitMainBranch.Focused = (m.focusedField == 0)
+	m.gitMainBranch.Width = inputWidth
 	lines = append(lines, m.gitMainBranch.View())
 	lines = append(lines, "")
 
-	// Protected branches
-	lines = append(lines, m.gitProtectedBranches.View())
-	lines = append(lines, "")
-
-	// Custom protected branch
+	// Custom Protected Branch
 	m.gitCustomProtected.Focused = (m.focusedField == 2)
+	m.gitCustomProtected.Width = inputWidth
 	lines = append(lines, m.gitCustomProtected.View())
 	lines = append(lines, "")
 
-	// Auto push/pull
+	// Protected Branches
+	lines = append(lines, m.gitProtectedBranches.View())
+	lines = append(lines, "")
+
+	// Auto Push & Auto Pull
 	m.gitAutoPush.Focused = (m.focusedField == 3)
-	lines = append(lines, "  "+m.gitAutoPush.View())
 	m.gitAutoPull.Focused = (m.focusedField == 4)
-	lines = append(lines, "  "+m.gitAutoPull.View())
+	
+	row := lipgloss.JoinHorizontal(lipgloss.Top,
+		m.gitAutoPush.View(),
+		"    ",
+		m.gitAutoPull.View(),
+	)
+	lines = append(lines, row)
 	lines = append(lines, "")
 
 	// Save button
@@ -813,12 +862,17 @@ func (m SettingsView) renderGitHubSettings() string {
 	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
 
-	lines = append(lines, styles.FormLabel.Render("GitHub Integration"))
+	lines = append(lines, styles.CardTitle.Copy().Align(lipgloss.Left).Render("GitHub Integration"))
 	lines = append(lines, "")
 
-	// Enabled checkbox
+	inputWidth := m.width - 30
+	if inputWidth < 40 {
+		inputWidth = 40
+	}
+
+	// Enabled
 	m.ghEnabled.Focused = (m.focusedField == 0)
-	lines = append(lines, "  "+m.ghEnabled.View())
+	lines = append(lines, m.ghEnabled.View())
 	lines = append(lines, "")
 
 	// Visibility
@@ -828,22 +882,30 @@ func (m SettingsView) renderGitHubSettings() string {
 
 	// License
 	m.ghDefaultLicense.Focused = (m.focusedField == 2)
+	m.ghDefaultLicense.Width = inputWidth
 	lines = append(lines, m.ghDefaultLicense.View())
 	lines = append(lines, "")
 
-	// .gitignore
+	// GitIgnore
 	m.ghDefaultGitIgnore.Focused = (m.focusedField == 3)
+	m.ghDefaultGitIgnore.Width = inputWidth
 	lines = append(lines, m.ghDefaultGitIgnore.View())
 	lines = append(lines, "")
 
 	// Options
 	lines = append(lines, styles.FormLabel.Render("Default Options:"))
 	m.ghEnableIssues.Focused = (m.focusedField == 4)
-	lines = append(lines, "  "+m.ghEnableIssues.View())
 	m.ghEnableWiki.Focused = (m.focusedField == 5)
-	lines = append(lines, "  "+m.ghEnableWiki.View())
 	m.ghEnableProjects.Focused = (m.focusedField == 6)
-	lines = append(lines, "  "+m.ghEnableProjects.View())
+	
+	row := lipgloss.JoinHorizontal(lipgloss.Top,
+		m.ghEnableIssues.View(),
+		"   ",
+		m.ghEnableWiki.View(),
+		"   ",
+		m.ghEnableProjects.View(),
+	)
+	lines = append(lines, row)
 	lines = append(lines, "")
 
 	// Save button
@@ -859,8 +921,13 @@ func (m SettingsView) renderCommitsSettings() string {
 	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
 
-	lines = append(lines, styles.FormLabel.Render("Commit Conventions"))
+	lines = append(lines, styles.CardTitle.Copy().Align(lipgloss.Left).Render("Commit Conventions"))
 	lines = append(lines, "")
+
+	inputWidth := m.width - 30
+	if inputWidth < 40 {
+		inputWidth = 40
+	}
 
 	// Convention selection
 	m.commitConvention.Focused = (m.focusedField == 0)
@@ -870,16 +937,24 @@ func (m SettingsView) renderCommitsSettings() string {
 	// Show fields based on convention
 	switch m.commitConvention.Selected {
 	case 0: // Conventional
+		// Types
 		lines = append(lines, m.commitTypes.View())
 		lines = append(lines, "")
 
+		// Options
 		m.commitRequireScope.Focused = (m.focusedField == 2)
-		lines = append(lines, "  "+m.commitRequireScope.View())
 		m.commitRequireBreaking.Focused = (m.focusedField == 3)
-		lines = append(lines, "  "+m.commitRequireBreaking.View())
+		
+		row := lipgloss.JoinHorizontal(lipgloss.Top,
+			m.commitRequireScope.View(),
+			"    ",
+			m.commitRequireBreaking.View(),
+		)
+		lines = append(lines, row)
 
 	case 1: // Custom
 		m.commitCustomTemplate.Focused = (m.focusedField == 4)
+		m.commitCustomTemplate.Width = inputWidth
 		lines = append(lines, m.commitCustomTemplate.View())
 		lines = append(lines, HelpText{Text: "Placeholders: {type}, {scope}, {description}, {body}"}.View())
 	}
@@ -899,26 +974,33 @@ func (m SettingsView) renderNamingSettings() string {
 	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
 
-	lines = append(lines, styles.FormLabel.Render("Branch Naming Patterns"))
+	lines = append(lines, styles.CardTitle.Copy().Align(lipgloss.Left).Render("Branch Naming Patterns"))
 	lines = append(lines, "")
 
-	// Enforce checkbox
+	inputWidth := m.width - 30
+	if inputWidth < 40 {
+		inputWidth = 40
+	}
+
+	// Enforce
 	m.namingEnforce.Focused = (m.focusedField == 0)
-	lines = append(lines, "  "+m.namingEnforce.View())
+	lines = append(lines, m.namingEnforce.View())
 	lines = append(lines, "")
 
 	// Pattern
 	m.namingPattern.Focused = (m.focusedField == 1)
+	m.namingPattern.Width = inputWidth
 	lines = append(lines, m.namingPattern.View())
 	lines = append(lines, HelpText{Text: "Use {description} placeholder"}.View())
 	lines = append(lines, "")
 
-	// Allowed prefixes
+	// Allowed Prefixes
 	lines = append(lines, m.namingAllowedPrefixes.View())
 	lines = append(lines, "")
 
-	// Custom prefix
+	// Custom Prefix
 	m.namingCustomPrefix.Focused = (m.focusedField == 3)
+	m.namingCustomPrefix.Width = inputWidth
 	lines = append(lines, m.namingCustomPrefix.View())
 	lines = append(lines, "")
 
@@ -935,17 +1017,24 @@ func (m SettingsView) renderAISettings() string {
 	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
 
-	lines = append(lines, styles.FormLabel.Render("AI Provider Configuration"))
+	lines = append(lines, styles.CardTitle.Copy().Align(lipgloss.Left).Render("AI Provider Configuration"))
 	lines = append(lines, "")
+
+	inputWidth := m.width - 30
+	if inputWidth < 40 {
+		inputWidth = 40
+	}
 
 	// Provider
 	m.aiProvider.Focused = (m.focusedField == 0)
+	m.aiProvider.Width = inputWidth
 	lines = append(lines, m.aiProvider.View())
 	lines = append(lines, "")
 
 	// API Key
 	m.aiAPIKey.Focused = (m.focusedField == 1)
 	m.aiAPIKey.Password = true
+	m.aiAPIKey.Width = inputWidth
 	lines = append(lines, m.aiAPIKey.View())
 	lines = append(lines, "")
 
@@ -954,23 +1043,29 @@ func (m SettingsView) renderAISettings() string {
 	lines = append(lines, m.aiAPITier.View())
 	lines = append(lines, "")
 
-	// Models
+	// Default Model
 	m.aiDefaultModel.Focused = (m.focusedField == 3)
+	m.aiDefaultModel.Width = inputWidth
 	lines = append(lines, m.aiDefaultModel.View())
 	lines = append(lines, "")
 
+	// Fallback Model
 	m.aiFallbackModel.Focused = (m.focusedField == 4)
+	m.aiFallbackModel.Width = inputWidth
 	lines = append(lines, m.aiFallbackModel.View())
 	lines = append(lines, "")
 
-	// Max diff size
+	// Max Diff & Context
 	m.aiMaxDiffSize.Focused = (m.focusedField == 5)
-	lines = append(lines, m.aiMaxDiffSize.View())
-	lines = append(lines, "")
-
-	// Include context
+	m.aiMaxDiffSize.Width = 20
 	m.aiIncludeContext.Focused = (m.focusedField == 6)
-	lines = append(lines, "  "+m.aiIncludeContext.View())
+	
+	row := lipgloss.JoinHorizontal(lipgloss.Center,
+		m.aiMaxDiffSize.View(),
+		"    ",
+		m.aiIncludeContext.View(),
+	)
+	lines = append(lines, row)
 	lines = append(lines, "")
 
 	// Save button
@@ -986,11 +1081,18 @@ func (m SettingsView) renderUISettings() string {
 	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
 
-	lines = append(lines, styles.FormLabel.Render("User Interface Configuration"))
+	lines = append(lines, styles.CardTitle.Copy().Align(lipgloss.Left).Render("User Interface Configuration"))
 	lines = append(lines, "")
+
+	colWidth := (m.width - 10) / 2
+	if colWidth < 45 {
+		colWidth = 45
+	}
 
 	// Theme dropdown
 	m.uiTheme.Focused = (m.focusedField == 0)
+	m.uiTheme.Width = colWidth
+	if m.uiTheme.Width < 20 { m.uiTheme.Width = 20 }
 	lines = append(lines, m.uiTheme.View())
 	lines = append(lines, "")
 

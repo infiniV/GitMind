@@ -89,7 +89,8 @@ func (t TextInput) View() string {
 
 	input := inputStyle.Render(displayValue)
 
-	return lipgloss.JoinHorizontal(lipgloss.Top, label, " ", input)
+	// Align label and input vertically to the center
+	return lipgloss.JoinHorizontal(lipgloss.Center, label, " ", input)
 }
 
 // Checkbox represents a single checkbox
@@ -318,6 +319,7 @@ type Dropdown struct {
 	Selected int
 	Focused  bool
 	Open     bool
+	Width    int
 }
 
 // NewDropdown creates a new dropdown
@@ -328,6 +330,7 @@ func NewDropdown(label string, options []string, defaultIndex int) Dropdown {
 		Selected: defaultIndex,
 		Focused:  false,
 		Open:     false,
+		Width:    38,
 	}
 }
 
@@ -365,14 +368,15 @@ func (d Dropdown) View() string {
 
 	var style lipgloss.Style
 	if d.Focused {
-		style = styles.FormInputFocused.Width(38)
+		style = styles.FormInputFocused.Width(d.Width)
 	} else {
-		style = styles.FormInput.Width(38)
+		style = styles.FormInput.Width(d.Width)
 	}
 
 	dropdown := style.Render(selectedValue + " " + arrow)
 
-	result := lipgloss.JoinHorizontal(lipgloss.Top, label, " ", dropdown) + navHint
+	// Align label and dropdown vertically to the center
+	result := lipgloss.JoinHorizontal(lipgloss.Center, label, " ", dropdown) + navHint
 
 	// If open, show options below
 	if d.Open {
