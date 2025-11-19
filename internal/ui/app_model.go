@@ -666,10 +666,11 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Check if merge view has a decision
 		if m.mergeView.HasDecision() {
 			strategy := m.mergeView.GetSelectedStrategy()
+			message := m.mergeView.GetMergeMessage()
 			m.state = StateMergeExecuting
 			m.loadingMessage = "Executing merge"
 			return m, tea.Batch(
-				m.executeMerge(strategy),
+				m.executeMerge(strategy, message),
 				tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
 					return loadingTickMsg(t)
 				}),
@@ -830,7 +831,7 @@ func (m AppModel) renderConfirmationDialog() string {
 	title := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(styles.ColorText).
-		Render("⚠ Confirmation")
+		Render("WARNING: Confirmation")
 
 	// Message
 	message := lipgloss.NewStyle().
@@ -1056,12 +1057,15 @@ func (m AppModel) executeCommit(option *CommitOption) tea.Cmd {
 }
 
 // executeMerge executes the selected merge strategy
-func (m AppModel) executeMerge(strategy string) tea.Cmd {
+func (m AppModel) executeMerge(strategy string, message string) tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
 
 		// Create execute use case
 		executeUC := usecase.NewExecuteMergeUseCase(m.gitOps)
+
+		// Create commit message from string
+		mergeMsg, _ := domain.NewCommitMessage(message)
 
 		// Build request
 		req := usecase.ExecuteMergeRequest{
@@ -1069,7 +1073,7 @@ func (m AppModel) executeMerge(strategy string) tea.Cmd {
 			SourceBranch: m.mergeAnalysisResult.SourceBranchInfo.Name(),
 			TargetBranch: m.mergeAnalysisResult.TargetBranch,
 			Strategy:     strategy,
-			MergeMessage: m.mergeAnalysisResult.MergeMessage,
+			MergeMessage: mergeMsg,
 		}
 
 		// Execute merge

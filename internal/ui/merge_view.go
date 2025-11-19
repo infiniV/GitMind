@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -23,6 +24,11 @@ type MergeViewModel struct {
 	ready             bool
 	windowWidth       int
 	windowHeight      int
+
+	// Input handling
+	state             ViewState
+	msgInput          textinput.Model
+	confirmationFocus int // 0: Msg, 1: Confirm, 2: Cancel
 }
 
 // MergeStrategy represents a selectable merge strategy.
@@ -36,6 +42,12 @@ type MergeStrategy struct {
 // NewMergeViewModel creates a new merge view model.
 func NewMergeViewModel(analysis *usecase.AnalyzeMergeResponse) MergeViewModel {
 	strategies := buildMergeStrategies(analysis)
+
+	// Initialize text input
+	msgInput := textinput.New()
+	msgInput.CharLimit = 72
+	msgInput.Width = 50
+	msgInput.Placeholder = "Enter merge message"
 
 	// Initialize viewport with default size (will be updated on first WindowSizeMsg)
 	vp := viewport.New(50, 20)
@@ -51,6 +63,8 @@ func NewMergeViewModel(analysis *usecase.AnalyzeMergeResponse) MergeViewModel {
 		ready:             true, // Set ready immediately
 		windowWidth:       120,  // Default width
 		windowHeight:      30,   // Default height
+		state:             ViewStateBrowsing,
+		msgInput:          msgInput,
 	}
 
 	// Set initial viewport content
@@ -130,10 +144,84 @@ func (m MergeViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.viewport.Width = viewportWidth
 		m.viewport.Height = viewportHeight
+		
+		// Refresh content with new width
+		m.viewport.SetContent(m.renderStrategiesContent())
 
 		return m, nil
 
 	case tea.KeyMsg:
+		// Handle confirmation state
+		if m.state == ViewStateConfirm {
+			switch msg.String() {
+			case "tab":
+				m.confirmationFocus++
+				if m.confirmationFocus > 2 {
+					m.confirmationFocus = 0
+				}
+				
+				// Update focus state
+				if m.confirmationFocus == 0 {
+					m.msgInput.Focus()
+				} else {
+					m.msgInput.Blur()
+				}
+				return m, textinput.Blink
+
+			case "shift+tab":
+				m.confirmationFocus--
+				if m.confirmationFocus < 0 {
+					m.confirmationFocus = 2
+				}
+				
+				// Update focus state
+				if m.confirmationFocus == 0 {
+					m.msgInput.Focus()
+				} else {
+					m.msgInput.Blur()
+				}
+				return m, textinput.Blink
+
+			case "enter":
+				if m.confirmationFocus == 1 { // Confirm button
+					// Signal decision
+					m.hasDecision = true
+					m.confirmed = true
+					return m, nil
+				} else if m.confirmationFocus == 2 { // Cancel button
+					m.state = ViewStateBrowsing
+					m.msgInput.Blur()
+					return m, nil
+				}
+				
+				// If on input, move to next field
+				m.confirmationFocus++
+				if m.confirmationFocus > 2 {
+					m.confirmationFocus = 1 // Go to confirm button
+				}
+				
+				if m.confirmationFocus == 0 {
+					m.msgInput.Focus()
+				} else {
+					m.msgInput.Blur()
+				}
+				return m, nil
+
+			case "esc":
+				m.state = ViewStateBrowsing
+				m.msgInput.Blur()
+				return m, nil
+			}
+
+			// Pass messages to input
+			if m.confirmationFocus == 0 {
+				m.msgInput, cmd = m.msgInput.Update(msg)
+				return m, cmd
+			}
+			return m, nil
+		}
+
+		// Handle browsing state
 		switch msg.String() {
 		case "up", "k":
 			if m.selectedIndex > 0 {
@@ -150,10 +238,19 @@ func (m MergeViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "enter":
-			// Signal that a decision has been made
-			m.hasDecision = true
-			m.confirmed = true
-			return m, nil
+			// Transition to confirmation state
+			m.state = ViewStateConfirm
+			m.confirmationFocus = 0 // Start at message
+			
+			// Initialize input with default message
+			if m.analysis.MergeMessage != nil {
+				m.msgInput.SetValue(m.analysis.MergeMessage.Title())
+			} else {
+				m.msgInput.SetValue("Merge branch '" + m.analysis.SourceBranchInfo.Name() + "'")
+			}
+			
+			m.msgInput.Focus()
+			return m, textinput.Blink
 		}
 	}
 
@@ -177,6 +274,11 @@ func (m MergeViewModel) View() string {
 		return lipgloss.NewStyle().
 			Foreground(styles.ColorMuted).
 			Render("Initializing merge view...")
+	}
+
+	// Render confirmation modal if in confirm state
+	if m.state == ViewStateConfirm {
+		return m.renderConfirmationModal()
 	}
 
 	// Calculate pane widths with divider space
@@ -308,6 +410,99 @@ func (m MergeViewModel) View() string {
 	return lipgloss.JoinVertical(lipgloss.Left, mainContent, "", footer)
 }
 
+func (m MergeViewModel) renderConfirmationModal() string {
+	styles := GetGlobalThemeManager().GetStyles()
+	selectedStrategy := m.strategies[m.selectedIndex]
+
+	// Title
+	title := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(styles.ColorText).
+		Render("Confirm Merge")
+
+	// Action description
+	actionDesc := lipgloss.NewStyle().
+		Foreground(styles.ColorPrimary).
+		Bold(true).
+		Render(selectedStrategy.Label)
+
+	// Message Input
+	msgLabel := styles.FormLabel.Render("Merge Message:")
+	msgInput := m.msgInput.View()
+	if m.confirmationFocus == 0 {
+		msgInput = styles.FormInputFocused.Render(m.msgInput.View())
+	} else {
+		msgInput = styles.FormInput.Render(m.msgInput.View())
+	}
+
+	// Buttons
+	buttonStyle := lipgloss.NewStyle().
+		Padding(0, 3).
+		MarginRight(2).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(styles.ColorMuted)
+
+	buttonActiveStyle := lipgloss.NewStyle().
+		Padding(0, 3).
+		MarginRight(2).
+		Bold(true).
+		Background(styles.ColorPrimary).
+		Foreground(lipgloss.Color("#000000")).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(styles.ColorPrimary)
+
+	// Render buttons
+	confirmBtn := "Confirm"
+	cancelBtn := "Cancel"
+
+	if m.confirmationFocus == 1 {
+		confirmBtn = buttonActiveStyle.Render(confirmBtn)
+		cancelBtn = buttonStyle.Render(cancelBtn)
+	} else if m.confirmationFocus == 2 {
+		confirmBtn = buttonStyle.Render(confirmBtn)
+		cancelBtn = buttonActiveStyle.Render(cancelBtn)
+	} else {
+		confirmBtn = buttonStyle.Render(confirmBtn)
+		cancelBtn = buttonStyle.Render(cancelBtn)
+	}
+
+	buttons := lipgloss.JoinHorizontal(lipgloss.Left, confirmBtn, cancelBtn)
+
+	// Help text
+	helpText := lipgloss.NewStyle().
+		Foreground(styles.ColorMuted).
+		Render("Tab to navigate  •  Enter to confirm/next  •  Esc to cancel")
+
+	// Combine all elements
+	content := lipgloss.JoinVertical(
+		lipgloss.Left,
+		title,
+		"",
+		actionDesc,
+		"",
+		msgLabel,
+		msgInput,
+		"",
+		buttons,
+		"",
+		helpText,
+	)
+
+	// Create a modal box
+	modalStyle := lipgloss.NewStyle().
+		Padding(2, 4).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(styles.ColorPrimary).
+		Background(lipgloss.Color("#1a1a1a")). // Dark background
+		Width(70)
+
+	return lipgloss.Place(
+		m.windowWidth, m.windowHeight,
+		lipgloss.Center, lipgloss.Center,
+		modalStyle.Render(content),
+	)
+}
+
 func (m MergeViewModel) renderMergeInfo() string {
 	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
@@ -315,7 +510,7 @@ func (m MergeViewModel) renderMergeInfo() string {
 	// Source and target branches
 	branchLine := styles.RepoLabel.Render("Merge:") + " " +
 		lipgloss.NewStyle().Foreground(styles.ColorPrimary).Bold(true).Render(m.analysis.SourceBranchInfo.Name()) +
-		lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(" → ") +
+		lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(" -> ") +
 		lipgloss.NewStyle().Foreground(styles.ColorSuccess).Bold(true).Render(m.analysis.TargetBranch)
 	lines = append(lines, branchLine)
 
@@ -327,9 +522,9 @@ func (m MergeViewModel) renderMergeInfo() string {
 	// Status
 	status := styles.RepoLabel.Render("Status:") + " "
 	if m.analysis.CanMerge {
-		status += lipgloss.NewStyle().Foreground(styles.ColorSuccess).Render("✓ Ready to merge")
+		status += lipgloss.NewStyle().Foreground(styles.ColorSuccess).Render("[OK] Ready to merge")
 	} else {
-		status += lipgloss.NewStyle().Foreground(styles.ColorError).Render("✗ Conflicts detected")
+		status += lipgloss.NewStyle().Foreground(styles.ColorError).Render("[ERR] Conflicts detected")
 	}
 	lines = append(lines, status)
 
@@ -351,7 +546,7 @@ func (m MergeViewModel) renderConflicts() string {
 				fmt.Sprintf("  ... and %d more", len(m.analysis.Conflicts)-5)))
 			break
 		}
-		lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorError).Render("  • "+conflict))
+		lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorError).Render("  * "+conflict))
 	}
 
 	return strings.Join(lines, "\n")
@@ -369,7 +564,7 @@ func (m MergeViewModel) renderCommits() string {
 
 	for i := 0; i < maxCommits; i++ {
 		commit := m.analysis.Commits[i]
-		commitLine := lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("  • ") +
+		commitLine := lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("  * ") +
 			lipgloss.NewStyle().Foreground(styles.ColorPrimary).Render(commit.Hash[:7]) + " " +
 			styles.RepoValue.Render(commit.Message)
 		lines = append(lines, commitLine)
@@ -411,63 +606,101 @@ func (m MergeViewModel) renderReasoning() string {
 		return ""
 	}
 
-	reasoning := styles.Description.Render("💡 " + m.analysis.Reasoning)
+	reasoning := styles.Description.Render("INFO: " + m.analysis.Reasoning)
 	return reasoning
 }
 
 // renderStrategiesContent returns just the strategies text for viewport (no title)
 func (m MergeViewModel) renderStrategiesContent() string {
-	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
 
 	for i, strategy := range m.strategies {
-		cursor := "  "
-		if i == m.selectedIndex {
-			cursor = styles.OptionCursor.Render("▶ ")
-		}
-
-		label := strategy.Label
-		if strategy.Recommended {
-			label += lipgloss.NewStyle().Foreground(styles.ColorSuccess).Render(" (recommended)")
-		}
-
-		if i == m.selectedIndex {
-			label = styles.OptionSelected.Render(label)
-		} else {
-			label = styles.OptionNormal.Render(label)
-		}
-
-		line := cursor + label
-		lines = append(lines, line)
-
-		// Add description with proper wrapping
-		if strategy.Description != "" {
-			// Calculate available width based on right pane width
-			totalMargins := 4
-			dividerWidth := 1
-			usableWidth := m.windowWidth - totalMargins - dividerWidth
-			rightPaneWidth := usableWidth - int(float64(usableWidth)*0.48)
-			if rightPaneWidth < 50 {
-				rightPaneWidth = 50
-			}
-
-			// Account for cursor, padding
-			maxWidth := rightPaneWidth - 10
-			if maxWidth < 30 {
-				maxWidth = 30
-			}
-
-			wrapped := wrapTextMerge(strategy.Description, maxWidth)
-			desc := styles.Description.Render("  " + wrapped)
-			lines = append(lines, desc)
-		}
-
+		strategyStr := m.renderStrategy(i, strategy)
+		lines = append(lines, strategyStr)
 		if i < len(m.strategies)-1 {
 			lines = append(lines, "") // Space between strategies
 		}
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+func (m MergeViewModel) renderStrategy(index int, strategy MergeStrategy) string {
+	styles := GetGlobalThemeManager().GetStyles()
+	isSelected := index == m.selectedIndex
+
+	// Build strategy content
+	var content []string
+
+	// Label with number
+	number := fmt.Sprintf("%d.", index+1)
+	label := fmt.Sprintf("%s %s", number, strategy.Label)
+	if isSelected {
+		content = append(content, styles.OptionLabel.Render(label))
+	} else {
+		content = append(content, styles.OptionNormal.Render(label))
+	}
+
+	// Recommended badge
+	if strategy.Recommended {
+		badge := lipgloss.NewStyle().
+			Foreground(styles.ColorSuccess).
+			Bold(true).
+			Render("[RECOMMENDED]")
+		content[0] = content[0] + " " + badge
+	}
+
+	// Calculate right pane width once
+	totalMargins := 4
+	dividerWidth := 1
+	usableWidth := m.windowWidth - totalMargins - dividerWidth
+	rightPaneWidth := usableWidth - int(float64(usableWidth)*0.48)
+	if rightPaneWidth < 50 {
+		rightPaneWidth = 50
+	}
+
+	// Calculate interior width for content (inside the box borders and padding)
+	// Box has: rounded border (2 chars each side) + padding (1 each side) = 6 total
+	interiorWidth := rightPaneWidth - 6
+	if interiorWidth < 40 {
+		interiorWidth = 40
+	}
+
+	// Calculate max width for text wrapping
+	// Account for OptionDesc paddingLeft (2 chars)
+	maxWidth := interiorWidth - 2
+	if maxWidth < 30 {
+		maxWidth = 30
+	}
+
+	// Description (wrapped to fit within the box)
+	if strategy.Description != "" {
+		wrapped := wrapTextMerge(strategy.Description, maxWidth)
+		desc := styles.OptionDesc.Render(wrapped)
+		content = append(content, desc)
+	}
+
+	// Join content
+	strategyContent := strings.Join(content, "\n")
+
+	// Use Place to force content to fill the full interior width
+	placedContent := lipgloss.Place(
+		interiorWidth,
+		lipgloss.Height(strategyContent),
+		lipgloss.Left,
+		lipgloss.Top,
+		strategyContent,
+	)
+
+	// Wrap in box style
+	var boxStyle lipgloss.Style
+	if isSelected {
+		boxStyle = styles.SelectedOptionBox
+	} else {
+		boxStyle = styles.NormalOptionBox
+	}
+
+	return boxStyle.Render(placedContent)
 }
 
 // wrapTextMerge wraps text to the specified width
@@ -502,58 +735,28 @@ func wrapTextMerge(text string, width int) string {
 		lines = append(lines, currentLine)
 	}
 
-	return strings.Join(lines, "\n  ") // Indent continuation lines
-}
-
-func (m MergeViewModel) renderStrategies() string {
-	styles := GetGlobalThemeManager().GetStyles()
-	var lines []string
-	lines = append(lines, styles.SectionTitle.Render("Select merge strategy:"))
-
-	for i, strategy := range m.strategies {
-		cursor := "  "
-		if i == m.selectedIndex {
-			cursor = styles.OptionCursor.Render("▶ ")
-		}
-
-		label := strategy.Label
-		if strategy.Recommended {
-			label += lipgloss.NewStyle().Foreground(styles.ColorSuccess).Render(" (recommended)")
-		}
-
-		if i == m.selectedIndex {
-			label = styles.OptionSelected.Render(label)
-		} else {
-			label = styles.OptionNormal.Render(label)
-		}
-
-		line := cursor + label
-		lines = append(lines, line)
-
-		// Add description
-		desc := styles.Description.Render(strategy.Description)
-		lines = append(lines, desc)
-	}
-
 	return strings.Join(lines, "\n")
 }
 
 func (m MergeViewModel) renderFooter() string {
 	styles := GetGlobalThemeManager().GetStyles()
+	var lines []string
+
+	// Keyboard shortcuts
 	shortcuts := []string{
-		styles.ShortcutKey.Render("↑/k") + " " + styles.ShortcutDesc.Render("up"),
-		styles.ShortcutKey.Render("↓/j") + " " + styles.ShortcutDesc.Render("down"),
-		styles.ShortcutKey.Render("enter") + " " + styles.ShortcutDesc.Render("confirm"),
-		styles.ShortcutKey.Render("esc") + " " + styles.ShortcutDesc.Render("cancel"),
+		styles.ShortcutKey.Render("↑/↓") + " " + styles.ShortcutDesc.Render("Navigate"),
+		styles.ShortcutKey.Render("Enter") + " " + styles.ShortcutDesc.Render("Confirm"),
+		styles.ShortcutKey.Render("Esc") + " " + styles.ShortcutDesc.Render("Cancel"),
 	}
+	shortcutLine := strings.Join(shortcuts, "  ")
+	lines = append(lines, shortcutLine)
 
-	footer := styles.Footer.Render(strings.Join(shortcuts, "  •  "))
-
-	// Add metadata
-	metadata := styles.Metadata.Render(fmt.Sprintf("Model: %s  •  Tokens: %d",
+	// Metadata
+	metadata := styles.Metadata.Render(fmt.Sprintf("Model: %s  |  Tokens: %d",
 		m.analysis.Model, m.analysis.TokensUsed))
+	lines = append(lines, metadata)
 
-	return footer + "\n" + metadata
+	return styles.Footer.Render(strings.Join(lines, "\n"))
 }
 
 // GetSelectedStrategy returns the selected merge strategy.
@@ -582,4 +785,9 @@ func (m MergeViewModel) ShouldReturnToDashboard() bool {
 // HasDecision returns true if the user has made a decision.
 func (m MergeViewModel) HasDecision() bool {
 	return m.hasDecision
+}
+
+// GetMergeMessage returns the edited merge message.
+func (m MergeViewModel) GetMergeMessage() string {
+	return m.msgInput.Value()
 }
