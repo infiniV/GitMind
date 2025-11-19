@@ -763,18 +763,63 @@ func (m AppModel) View() string {
 
 // renderLoadingOverlay renders a loading message overlay
 func (m AppModel) renderLoadingOverlay() string {
+	styles := GetGlobalThemeManager().GetStyles()
+	
+	// Title
+	title := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(styles.ColorPrimary).
+		Render("AI ANALYSIS")
+
+	// Operation type
+	operation := "Analyzing Changes"
+	if m.state == StateMergeAnalyzing {
+		operation = "Analyzing Merge"
+	} else if m.state == StateCommitExecuting {
+		operation = "Executing Commit"
+	} else if m.state == StateMergeExecuting {
+		operation = "Executing Merge"
+	}
+
+	opText := lipgloss.NewStyle().
+		Foreground(styles.ColorSecondary).
+		Bold(true).
+		Render(operation)
+
+	// Loading animation
 	dots := ""
 	for i := 0; i < m.loadingDots; i++ {
 		dots += "."
 	}
-
-	styles := GetGlobalThemeManager().GetStyles()
+	// Pad dots to avoid layout jumping
+	dots = fmt.Sprintf("%-3s", dots)
+	
 	loadingText := styles.Loading.Render(m.loadingMessage + dots)
 
-	// Create a centered box
-	box := styles.CommitBox.Render(loadingText)
+	// Content
+	content := lipgloss.JoinVertical(
+		lipgloss.Center,
+		title,
+		"",
+		opText,
+		"",
+		loadingText,
+		"",
+		lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("Please wait while we process your request..."),
+	)
 
-	return "\n\n" + box
+	// Create a centered box
+	box := styles.CommitBox.
+		Padding(2, 4).
+		Width(60).
+		Align(lipgloss.Center).
+		Render(content)
+
+	return "\n\n" + lipgloss.Place(
+		m.windowWidth, m.windowHeight-4, // Adjust for margins
+		lipgloss.Center, lipgloss.Center,
+		box,
+	)
 }
 
 // renderConfirmationDialog renders a full-screen confirmation dialog with buttons
