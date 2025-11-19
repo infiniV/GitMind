@@ -232,24 +232,24 @@ func (c *CerebrasProvider) buildPrompt(request AnalysisRequest) string {
 
 	// Instructions (enhanced with branch-aware guidance)
 	sb.WriteString("Based on these changes, provide:\n")
-	sb.WriteString("1. A clear, concise commit message")
+	sb.WriteString("1. A professional, software engineering standard commit message.\n")
+	sb.WriteString("   - Subject line: Imperative mood, no period, max 50 chars.\n")
+	sb.WriteString("   - Body: Explain 'what' and 'why', not 'how'. Bullet points for multiple changes.\n")
+	sb.WriteString("   - NO fluff, NO emojis, NO 'updates file', NO 'fixes bug'. Be specific.\n")
 	if request.UseConventionalCommits {
-		sb.WriteString(" following conventional commits format (type(scope): description)")
+		sb.WriteString("   - Use conventional commits format (type(scope): description).\n")
 	}
 	sb.WriteString("\n")
 	sb.WriteString("2. Your recommendation:\n")
 	if request.MergeOpportunity {
-		sb.WriteString("   - MERGE OPPORTUNITY: Branch is clean with multiple commits. Consider recommending 'merge' action.\n")
-		sb.WriteString("   - User can merge to parent branch or continue working.\n")
+		sb.WriteString("   - MERGE OPPORTUNITY: Branch is clean with multiple commits. Recommend 'merge'.\n")
 	} else if request.BranchInfo != nil && request.BranchInfo.IsProtected() {
-		sb.WriteString("   - IMPORTANT: User is on a PROTECTED branch. Strongly recommend creating a feature branch.\n")
-	} else if request.BranchInfo != nil && request.BranchInfo.Type() != "protected" {
-		sb.WriteString("   - User is on a feature branch. Consider if changes fit the branch purpose.\n")
-		sb.WriteString("   - If changes match the branch theme, recommend committing directly.\n")
-		sb.WriteString("   - If changes are unrelated or substantial, consider creating a new branch.\n")
+		sb.WriteString("   - PROTECTED BRANCH: Recommend 'create-branch'.\n")
+	} else {
+		sb.WriteString("   - Recommend 'commit-direct' for safe changes, 'create-branch' for risky/large changes.\n")
 	}
-	sb.WriteString("3. Brief reasoning for your recommendation\n")
-	sb.WriteString("4. Alternative approaches if applicable\n")
+	sb.WriteString("3. Brief reasoning (technical risk assessment)\n")
+	sb.WriteString("4. Alternative approaches\n")
 
 	return sb.String()
 }
@@ -587,26 +587,63 @@ func mapActionType(action string) domain.ActionType {
 }
 
 func reduceDiffContext(diff string, maxTokens int) string {
-	// Rough estimate: 4 characters per token
+	// Estimate: 4 chars per token. Reserve some buffer.
 	maxChars := maxTokens * 4
-
 	if len(diff) <= maxChars {
 		return diff
 	}
 
-	// Truncate but try to keep complete hunks
-	lines := strings.Split(diff, "\n")
 	var sb strings.Builder
-	currentSize := 0
+	lines := strings.Split(diff, "\n")
+	
+	// Always keep the file headers (diff --git ...)
+	// Truncate large hunks
+	
+	currentChars := 0
+	inHunk := false
+	hunkLines := 0
+	maxHunkLines := 20 // Max lines per hunk before summarizing
 
 	for _, line := range lines {
-		if currentSize+len(line) > maxChars {
-			sb.WriteString("\n... (diff truncated for token limit) ...")
+		// Check for file header
+		if strings.HasPrefix(line, "diff --git") {
+			inHunk = false
+			hunkLines = 0
+			sb.WriteString(line + "\n")
+			currentChars += len(line) + 1
+			continue
+		}
+
+		// Check for hunk header
+		if strings.HasPrefix(line, "@@") {
+			inHunk = true
+			hunkLines = 0
+			sb.WriteString(line + "\n")
+			currentChars += len(line) + 1
+			continue
+		}
+
+		// If we are in a hunk, check limits
+		if inHunk {
+			hunkLines++
+			if hunkLines > maxHunkLines {
+				if hunkLines == maxHunkLines + 1 {
+					msg := "... (hunk truncated) ...\n"
+					sb.WriteString(msg)
+					currentChars += len(msg)
+				}
+				continue
+			}
+		}
+
+		// Global limit check
+		if currentChars+len(line) > maxChars {
+			sb.WriteString("\n... (remaining diff truncated due to token limit) ...")
 			break
 		}
-		sb.WriteString(line)
-		sb.WriteString("\n")
-		currentSize += len(line) + 1
+
+		sb.WriteString(line + "\n")
+		currentChars += len(line) + 1
 	}
 
 	return sb.String()
