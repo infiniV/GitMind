@@ -45,16 +45,17 @@ const (
 
 // DashboardModel represents the state of the dashboard view
 type DashboardModel struct {
-	gitOps        git.Operations
-	repoPath      string
-	config        *domain.Config
-	repo          *domain.Repository
-	branchInfo    *domain.BranchInfo
-	branches      []string
-	recentCommits []git.CommitInfo
-	selectedCard  int
-	activeSubmenu ActiveSubmenu
-	submenuIndex  int
+	gitOps              git.Operations
+	repoPath            string
+	config              *domain.Config
+	repo                *domain.Repository
+	branchInfo          *domain.BranchInfo
+	branches            []string
+	recentCommits       []git.CommitInfo
+	selectedCard        int
+	activeSubmenu       ActiveSubmenu
+	submenuIndex        int
+	submenuScrollOffset int
 
 	// Submenu options
 	customMessage string
@@ -200,17 +201,25 @@ func (m DashboardModel) handleSubmenuKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc", "q":
 		m.activeSubmenu = NoSubmenu
 		m.submenuIndex = 0
+		m.submenuScrollOffset = 0
 		return m, nil
 
 	case "up", "k":
 		if m.submenuIndex > 0 {
 			m.submenuIndex--
+			if m.submenuIndex < m.submenuScrollOffset {
+				m.submenuScrollOffset = m.submenuIndex
+			}
 		}
 
 	case "down", "j":
 		maxIndex := m.getSubmenuMaxIndex()
 		if m.submenuIndex < maxIndex {
 			m.submenuIndex++
+			visibleHeight := 10
+			if m.submenuIndex >= m.submenuScrollOffset+visibleHeight {
+				m.submenuScrollOffset = m.submenuIndex - visibleHeight + 1
+			}
 		}
 
 	case "enter", " ":
@@ -222,30 +231,27 @@ func (m DashboardModel) handleSubmenuKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // handleCardActivation opens submenu or performs action when card is selected
 func (m DashboardModel) handleCardActivation() (tea.Model, tea.Cmd) {
+	m.submenuIndex = 0
+	m.submenuScrollOffset = 0
+
 	switch m.selectedCard {
 	case 0: // Repository Status - show repository details menu
 		m.activeSubmenu = RepositoryDetailsMenu
-		m.submenuIndex = 0
 
 	case 1: // AI Commit - show commit options
 		m.activeSubmenu = CommitOptionsMenu
-		m.submenuIndex = 0
 
 	case 2: // AI Merge - show merge options
 		m.activeSubmenu = MergeOptionsMenu
-		m.submenuIndex = 0
 
 	case 3: // Recent Commits - show commit list
 		m.activeSubmenu = CommitListMenu
-		m.submenuIndex = 0
 
 	case 4: // Branch Switcher - show branch list
 		m.activeSubmenu = BranchListMenu
-		m.submenuIndex = 0
 
 	case 5: // Quick Actions - show help
 		m.activeSubmenu = HelpMenu
-		m.submenuIndex = 0
 	}
 
 	return m, nil
@@ -873,12 +879,18 @@ func (m DashboardModel) renderCommitListMenu() string {
 	if len(m.recentCommits) == 0 {
 		lines = append(lines, styles.SubmenuOption.Render("No commits yet"))
 	} else {
-		maxDisplay := 10
-		if len(m.recentCommits) < maxDisplay {
-			maxDisplay = len(m.recentCommits)
+		visibleHeight := 10
+		start := m.submenuScrollOffset
+		end := start + visibleHeight
+		if end > len(m.recentCommits) {
+			end = len(m.recentCommits)
 		}
 
-		for i := 0; i < maxDisplay; i++ {
+		if start > 0 {
+			lines = append(lines, styles.SubmenuOption.Render(fmt.Sprintf("  ... %d more above", start)))
+		}
+
+		for i := start; i < end; i++ {
 			commit := m.recentCommits[i]
 			hash := styles.StatusInfo.Render(commit.Hash[:7])
 			msg := commit.Message
@@ -893,6 +905,10 @@ func (m DashboardModel) renderCommitListMenu() string {
 				line = styles.SubmenuOption.Render("  " + line)
 			}
 			lines = append(lines, line)
+		}
+
+		if end < len(m.recentCommits) {
+			lines = append(lines, styles.SubmenuOption.Render(fmt.Sprintf("  ... %d more below", len(m.recentCommits)-end)))
 		}
 	}
 
@@ -912,12 +928,18 @@ func (m DashboardModel) renderBranchListMenu() string {
 	if len(m.branches) == 0 {
 		lines = append(lines, styles.SubmenuOption.Render("No branches"))
 	} else {
-		maxDisplay := 10
-		if len(m.branches) < maxDisplay {
-			maxDisplay = len(m.branches)
+		visibleHeight := 10
+		start := m.submenuScrollOffset
+		end := start + visibleHeight
+		if end > len(m.branches) {
+			end = len(m.branches)
 		}
 
-		for i := 0; i < maxDisplay; i++ {
+		if start > 0 {
+			lines = append(lines, styles.SubmenuOption.Render(fmt.Sprintf("  ... %d more above", start)))
+		}
+
+		for i := start; i < end; i++ {
 			branch := m.branches[i]
 			isCurrent := m.repo != nil && branch == m.repo.CurrentBranch()
 
@@ -933,6 +955,10 @@ func (m DashboardModel) renderBranchListMenu() string {
 				line = styles.SubmenuOption.Render("  " + line)
 			}
 			lines = append(lines, line)
+		}
+
+		if end < len(m.branches) {
+			lines = append(lines, styles.SubmenuOption.Render(fmt.Sprintf("  ... %d more below", len(m.branches)-end)))
 		}
 	}
 
@@ -1280,7 +1306,7 @@ func fetchRecentCommits(gitOps git.Operations, repoPath string) tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		commits, err := gitOps.GetLog(ctx, repoPath, 10)
+		commits, err := gitOps.GetLog(ctx, repoPath, 50)
 		if err != nil {
 			return errorMsg{err}
 		}

@@ -144,7 +144,7 @@ func (m MergeViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.viewport.Width = viewportWidth
 		m.viewport.Height = viewportHeight
-		
+
 		// Refresh content with new width
 		m.viewport.SetContent(m.renderStrategiesContent())
 
@@ -159,7 +159,7 @@ func (m MergeViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.confirmationFocus > 2 {
 					m.confirmationFocus = 0
 				}
-				
+
 				// Update focus state
 				if m.confirmationFocus == 0 {
 					m.msgInput.Focus()
@@ -173,7 +173,7 @@ func (m MergeViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.confirmationFocus < 0 {
 					m.confirmationFocus = 2
 				}
-				
+
 				// Update focus state
 				if m.confirmationFocus == 0 {
 					m.msgInput.Focus()
@@ -193,13 +193,13 @@ func (m MergeViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.msgInput.Blur()
 					return m, nil
 				}
-				
+
 				// If on input, move to next field
 				m.confirmationFocus++
 				if m.confirmationFocus > 2 {
 					m.confirmationFocus = 1 // Go to confirm button
 				}
-				
+
 				if m.confirmationFocus == 0 {
 					m.msgInput.Focus()
 				} else {
@@ -241,14 +241,14 @@ func (m MergeViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Transition to confirmation state
 			m.state = ViewStateConfirm
 			m.confirmationFocus = 0 // Start at message
-			
+
 			// Initialize input with default message
 			if m.analysis.MergeMessage != nil {
 				m.msgInput.SetValue(m.analysis.MergeMessage.Title())
 			} else {
 				m.msgInput.SetValue("Merge branch '" + m.analysis.SourceBranchInfo.Name() + "'")
 			}
-			
+
 			m.msgInput.Focus()
 			return m, textinput.Blink
 		}
