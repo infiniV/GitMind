@@ -463,7 +463,7 @@ func (m DashboardModel) renderHeader() string {
 		}
 
 		branchLine := fmt.Sprintf("%s %s %s",
-			lipgloss.NewStyle().Foreground(styles.ColorSecondary).Render(" "+branchName),
+			lipgloss.NewStyle().Foreground(styles.ColorSecondary).Render("Branch: "+branchName),
 			lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("•"),
 			lipgloss.NewStyle().Foreground(statusColor).Render(statusText))
 
@@ -609,27 +609,27 @@ func (m DashboardModel) renderRepoStatusCard() string {
 		branch = branch[:22] + "..."
 	}
 	lines = append(lines, fmt.Sprintf("%s %s",
-		lipgloss.NewStyle().Foreground(styles.ColorSecondary).Render(""),
+		lipgloss.NewStyle().Foreground(styles.ColorSecondary).Render("Branch:"),
 		lipgloss.NewStyle().Foreground(styles.ColorText).Bold(true).Render(branch)))
 
 	// Changes
 	if m.repo.HasChanges() {
 		stats := fmt.Sprintf("+%d -%d", m.repo.TotalAdditions(), m.repo.TotalDeletions())
 		lines = append(lines, fmt.Sprintf("%s %s",
-			styles.StatusWarning.Render("*"),
+			styles.StatusWarning.Render("ℹ"),
 			fmt.Sprintf("%d files changed (%s)", m.repo.TotalChanges(), stats)))
 	} else {
 		lines = append(lines, fmt.Sprintf("%s %s",
-			styles.StatusOk.Render("[OK]"),
+			styles.StatusOk.Render("✓"),
 			"Working directory clean"))
 	}
 
 	// Remote
 	if m.repo.HasRemote() {
 		syncStatus := m.repo.SyncStatusSummary()
-		icon := "[REMOTE]"
+		icon := "☁"
 		if m.repo.IsGitHubRemote() {
-			icon = "[GITHUB]"
+			icon = "☁"
 		}
 
 		statusColor := styles.ColorMuted
@@ -644,7 +644,7 @@ func (m DashboardModel) renderRepoStatusCard() string {
 			lipgloss.NewStyle().Foreground(statusColor).Render(syncStatus)))
 	} else {
 		lines = append(lines, fmt.Sprintf("%s %s",
-			lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("[REMOTE]"),
+			lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("☁"),
 			"No remote configured"))
 	}
 
@@ -661,13 +661,13 @@ func (m DashboardModel) renderCommitCard() string {
 
 	if m.repo.HasChanges() {
 		return fmt.Sprintf("%s\n\n%s\n%s",
-			styles.StatusInfo.Render("Ready to commit"),
+			styles.StatusInfo.Render("✓ Ready to commit"),
 			fmt.Sprintf("%d files staged", m.repo.TotalChanges()),
 			lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("Press Enter to start"))
 	}
 
 	return fmt.Sprintf("%s\n\n%s",
-		styles.StatusOk.Render("Nothing to commit"),
+		styles.StatusOk.Render("✓ Nothing to commit"),
 		lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("Working tree clean"))
 }
 
@@ -697,7 +697,7 @@ func (m DashboardModel) renderMergeCard() string {
 	}
 
 	return fmt.Sprintf("%s\n\n%s",
-		"No parent branch",
+		"✗ No parent branch",
 		lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("Configure in settings"))
 }
 
@@ -766,14 +766,7 @@ func (m DashboardModel) renderBranchesCard() string {
 		style := lipgloss.NewStyle()
 
 		if isCurrent {
-			prefix = "* "
-			style = style.Foreground(styles.ColorSuccess)
-		} else {
-			style = style.Foreground(styles.ColorMuted)
-		}
-
-		if len(branch) > 25 {
-			branch = branch[:22] + "..."
+			prefix = styles.StatusOk.Render("✓ ")
 		}
 
 		lines = append(lines, style.Render(prefix+branch))
@@ -930,7 +923,7 @@ func (m DashboardModel) renderBranchListMenu() string {
 
 			indicator := "  "
 			if isCurrent {
-				indicator = styles.StatusOk.Render("* ")
+				indicator = styles.StatusOk.Render("✓ ")
 			}
 
 			line := indicator + branch
