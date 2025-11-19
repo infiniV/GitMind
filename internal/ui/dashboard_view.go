@@ -47,6 +47,7 @@ const (
 type DashboardModel struct {
 	gitOps        git.Operations
 	repoPath      string
+	config        *domain.Config
 	repo          *domain.Repository
 	branchInfo    *domain.BranchInfo
 	branches      []string
@@ -56,7 +57,6 @@ type DashboardModel struct {
 	submenuIndex  int
 
 	// Submenu options
-	useConventional bool
 	customMessage   string
 	sourceBranch    string
 	targetBranch    string
@@ -85,15 +85,16 @@ type commitsMsg []git.CommitInfo
 type errorMsg struct{ err error }
 
 // NewDashboardModel creates a new dashboard model
-func NewDashboardModel(gitOps git.Operations, repoPath string) DashboardModel {
+func NewDashboardModel(gitOps git.Operations, repoPath string, config *domain.Config) DashboardModel {
 	return DashboardModel{
-		gitOps:        gitOps,
-		repoPath:      repoPath,
-		selectedCard:  0,
-		activeSubmenu: NoSubmenu,
-		loading:       true,
-		actionParams:  make(map[string]interface{}),
-		version:       "0.1.0", // Default version
+		gitOps:          gitOps,
+		repoPath:        repoPath,
+		config:          config,
+		selectedCard:    0,
+		activeSubmenu:   NoSubmenu,
+		loading:         true,
+		actionParams:    make(map[string]interface{}),
+		version:         "0.1.0", // Default version
 	}
 }
 
@@ -254,22 +255,17 @@ func (m DashboardModel) handleCardActivation() (tea.Model, tea.Cmd) {
 func (m DashboardModel) handleSubmenuSelection() (tea.Model, tea.Cmd) {
 	switch m.activeSubmenu {
 	case CommitOptionsMenu:
-		switch m.submenuIndex {
-		case 0:
-			// Toggle conventional commits
-			m.useConventional = !m.useConventional
-		case 2:
+		if m.submenuIndex == 0 {
 			// Execute commit
 			m.action = ActionCommit
-			m.actionParams["conventional"] = m.useConventional
-			m.actionParams["message"] = m.customMessage
+			m.actionParams["conventional"] = m.config.Commits.Convention == "conventional"
 			m.activeSubmenu = NoSubmenu
 			m.submenuIndex = 0
 			return m, nil
 		}
 
 	case MergeOptionsMenu:
-		if m.submenuIndex == 2 {
+		if m.submenuIndex == 0 {
 			// Execute merge
 			m.action = ActionMerge
 			m.actionParams["source"] = m.sourceBranch
@@ -369,9 +365,9 @@ func (m DashboardModel) handleSubmenuSelection() (tea.Model, tea.Cmd) {
 func (m DashboardModel) getSubmenuMaxIndex() int {
 	switch m.activeSubmenu {
 	case CommitOptionsMenu:
-		return 2 // 3 options: conventional, message, execute
+		return 0 // 1 option: execute
 	case MergeOptionsMenu:
-		return 2 // 3 options: source, target, execute
+		return 0 // 1 option: execute
 	case CommitListMenu:
 		return len(m.recentCommits) - 1
 	case BranchListMenu:
@@ -828,39 +824,26 @@ func (m DashboardModel) renderCommitOptionsMenu() string {
 	lines = append(lines, styles.CardTitle.Render("Commit Options"))
 	lines = append(lines, "")
 
-	// Option 0: Conventional commits
-	checkbox := "[ ]"
-	if m.useConventional {
-		checkbox = styles.Checkbox.Render("[x]")
+	// Show current mode (informational)
+	mode := "Standard"
+	if m.config.Commits.Convention == "conventional" {
+		mode = "Conventional"
 	}
-	opt0 := fmt.Sprintf("%s Conventional commits format", checkbox)
+	info := fmt.Sprintf("Format: %s (configured in settings)", mode)
+	lines = append(lines, styles.Description.Render(info))
+	lines = append(lines, "")
+
+	// Option 0: Execute
+	opt0 := "  Analyze and commit"
 	if m.submenuIndex == 0 {
-		opt0 = styles.SubmenuOptionActive.Render("▶ " + opt0)
+		opt0 = styles.SubmenuOptionActive.Render("▶ " + styles.StatusInfo.Render("Analyze and commit"))
 	} else {
-		opt0 = styles.SubmenuOption.Render("  " + opt0)
+		opt0 = styles.SubmenuOption.Render(opt0)
 	}
 	lines = append(lines, opt0)
 
-	// Option 1: Custom message (placeholder)
-	opt1 := "  Add custom context (not implemented)"
-	if m.submenuIndex == 1 {
-		opt1 = styles.SubmenuOptionActive.Render("▶ Add custom context (not implemented)")
-	} else {
-		opt1 = styles.SubmenuOption.Render(opt1)
-	}
-	lines = append(lines, opt1)
-
-	// Option 2: Execute
-	opt2 := "  Analyze and commit"
-	if m.submenuIndex == 2 {
-		opt2 = styles.SubmenuOptionActive.Render("▶ " + styles.StatusInfo.Render("Analyze and commit"))
-	} else {
-		opt2 = styles.SubmenuOption.Render(opt2)
-	}
-	lines = append(lines, opt2)
-
 	lines = append(lines, "")
-	lines = append(lines, styles.ShortcutDesc.Render("Space: toggle  •  Enter: select  •  Esc: cancel"))
+	lines = append(lines, styles.ShortcutDesc.Render("Enter: select  •  Esc: cancel"))
 
 	return strings.Join(lines, "\n")
 }
@@ -872,32 +855,14 @@ func (m DashboardModel) renderMergeOptionsMenu() string {
 	lines = append(lines, styles.CardTitle.Render("Merge Options"))
 	lines = append(lines, "")
 
-	// Option 0: Source branch (placeholder)
-	opt0 := "  Specify source branch (not implemented)"
+	// Option 0: Execute
+	opt0 := "  Auto-detect and merge"
 	if m.submenuIndex == 0 {
-		opt0 = styles.SubmenuOptionActive.Render("▶ Specify source branch (not implemented)")
+		opt0 = styles.SubmenuOptionActive.Render("▶ " + styles.StatusInfo.Render("Auto-detect and merge"))
 	} else {
 		opt0 = styles.SubmenuOption.Render(opt0)
 	}
 	lines = append(lines, opt0)
-
-	// Option 1: Target branch (placeholder)
-	opt1 := "  Specify target branch (not implemented)"
-	if m.submenuIndex == 1 {
-		opt1 = styles.SubmenuOptionActive.Render("▶ Specify target branch (not implemented)")
-	} else {
-		opt1 = styles.SubmenuOption.Render(opt1)
-	}
-	lines = append(lines, opt1)
-
-	// Option 2: Execute
-	opt2 := "  Auto-detect and merge"
-	if m.submenuIndex == 2 {
-		opt2 = styles.SubmenuOptionActive.Render("▶ " + styles.StatusInfo.Render("Auto-detect and merge"))
-	} else {
-		opt2 = styles.SubmenuOption.Render(opt2)
-	}
-	lines = append(lines, opt2)
 
 	lines = append(lines, "")
 	lines = append(lines, styles.ShortcutDesc.Render("Enter: select  •  Esc: cancel"))
