@@ -143,12 +143,13 @@ func TestOnboardingGitHubScreen_TextInput(t *testing.T) {
 
 			// Simulate key press
 			msg := tea.KeyMsg{}
-			if tt.keyString == "backspace" {
+			switch tt.keyString {
+			case "backspace":
 				msg.Type = tea.KeyBackspace
-			} else if tt.keyString == " " {
+			case " ":
 				msg.Type = tea.KeyRunes
 				msg.Runes = []rune(" ")
-			} else {
+			default:
 				msg.Type = tea.KeyRunes
 				msg.Runes = []rune(tt.keyString)
 			}

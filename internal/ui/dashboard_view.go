@@ -58,9 +58,8 @@ type DashboardModel struct {
 	submenuScrollOffset int
 
 	// Submenu options
-	customMessage string
-	sourceBranch  string
-	targetBranch  string
+	sourceBranch string
+	targetBranch string
 
 	// State
 	loading   bool
@@ -613,7 +612,7 @@ func (m DashboardModel) renderCard(index int, title, content string) string {
 	style = style.Width(cardWidth).Height(12)
 
 	// Title at top
-	titleLine := styles.CardTitle.Copy().Width(cardWidth - 4).Render(title)
+	titleLine := styles.CardTitle.Width(cardWidth - 4).Render(title)
 
 	// Content
 	contentStyle := lipgloss.NewStyle().Foreground(styles.ColorMuted)

@@ -774,11 +774,12 @@ func (m AppModel) renderLoadingOverlay() string {
 
 	// Operation type
 	operation := "Analyzing Changes"
-	if m.state == StateMergeAnalyzing {
+	switch m.state {
+	case StateMergeAnalyzing:
 		operation = "Analyzing Merge"
-	} else if m.state == StateCommitExecuting {
+	case StateCommitExecuting:
 		operation = "Executing Commit"
-	} else if m.state == StateMergeExecuting {
+	case StateMergeExecuting:
 		operation = "Executing Merge"
 	}
 
