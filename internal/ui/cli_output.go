@@ -11,28 +11,28 @@ func getSuccessPrefix() string {
 	return lipgloss.NewStyle().
 		Foreground(GetGlobalThemeManager().GetStyles().ColorSuccess).
 		Bold(true).
-		Render("[SUCCESS]")
+		Render("✓")
 }
 
 func getErrorPrefix() string {
 	return lipgloss.NewStyle().
 		Foreground(GetGlobalThemeManager().GetStyles().ColorError).
 		Bold(true).
-		Render("[ERROR]")
+		Render("✗")
 }
 
 func getInfoPrefix() string {
 	return lipgloss.NewStyle().
 		Foreground(GetGlobalThemeManager().GetStyles().ColorPrimary).
 		Bold(true).
-		Render("[INFO]")
+		Render("ℹ")
 }
 
 func getWarningPrefix() string {
 	return lipgloss.NewStyle().
 		Foreground(GetGlobalThemeManager().GetStyles().ColorWarning).
 		Bold(true).
-		Render("[WARNING]")
+		Render("ℹ")
 }
 
 // PrintSuccess prints a success message

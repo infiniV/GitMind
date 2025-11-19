@@ -2,7 +2,7 @@
 
 An AI-powered Git CLI manager that makes complex Git workflows simple through intelligent automation.
 
-## ✨ Features
+## Features
 
 ### Core Features
 - **AI-Generated Commit Messages**: Analyzes your changes and generates meaningful, contextual commit messages

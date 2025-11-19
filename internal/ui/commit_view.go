@@ -470,7 +470,7 @@ func (m CommitViewModel) View() string {
 	leftSections = append(leftSections, repoInfo)
 
 	if !m.repo.HasRemote() {
-		warning := styles.Warning.Render("[WARNING]") + " " +
+		warning := styles.Warning.Render("ℹ") + " " +
 			lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(
 				"No remote configured")
 		leftSections = append(leftSections, warning)

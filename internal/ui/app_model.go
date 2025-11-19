@@ -770,7 +770,7 @@ func (m AppModel) renderLoadingOverlay() string {
 	title := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(styles.ColorPrimary).
-		Render("AI ANALYSIS")
+		Render("ℹ AI ANALYSIS")
 
 	// Operation type
 	operation := "Analyzing Changes"
@@ -831,7 +831,7 @@ func (m AppModel) renderConfirmationDialog() string {
 	title := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(styles.ColorText).
-		Render("WARNING: Confirmation")
+		Render("ℹ Confirmation")
 
 	// Message
 	message := lipgloss.NewStyle().
@@ -908,7 +908,7 @@ func (m AppModel) renderErrorModal() string {
 	title := lipgloss.NewStyle().
 		Foreground(styles.ColorError).
 		Bold(true).
-		Render("ERROR")
+		Render("✗ ERROR")
 
 	message := lipgloss.NewStyle().
 		Foreground(styles.ColorError).

@@ -144,11 +144,11 @@ func (m OnboardingWelcomeScreen) renderProgressBar() string {
 	var dots []string
 	for i := 1; i <= totalDots; i++ {
 		if i == currentDot {
-			dots = append(dots, lipgloss.NewStyle().Foreground(styles.ColorPrimary).Bold(true).Render("●"))
+			dots = append(dots, lipgloss.NewStyle().Foreground(styles.ColorPrimary).Bold(true).Render("☑"))
 		} else if i < currentDot {
-			dots = append(dots, lipgloss.NewStyle().Foreground(styles.ColorSuccess).Render("●"))
+			dots = append(dots, lipgloss.NewStyle().Foreground(styles.ColorSuccess).Render("✓"))
 		} else {
-			dots = append(dots, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("○"))
+			dots = append(dots, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("☐"))
 		}
 	}
 

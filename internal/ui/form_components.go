@@ -116,9 +116,9 @@ func (c *Checkbox) Toggle() {
 // View renders the checkbox
 func (c Checkbox) View() string {
 	styles := GetGlobalThemeManager().GetStyles()
-	checkbox := "[ ]"
+	checkbox := "☐"
 	if c.Checked {
-		checkbox = "[x]"
+		checkbox = "☑"
 	}
 
 	var style lipgloss.Style
@@ -173,9 +173,9 @@ func (r RadioGroup) View() string {
 
 	// Options
 	for i, option := range r.Options {
-		radio := "( )"
+		radio := "☐"
 		if i == r.Selected {
-			radio = "(•)"
+			radio = "☑"
 		}
 
 		var style lipgloss.Style
@@ -352,11 +352,11 @@ func (d Dropdown) View() string {
 	label := styles.FormLabel.Render(d.Label + ":")
 
 	selectedValue := d.Options[d.Selected]
-	arrow := "▼"
+	arrow := "v"
 	navHint := ""
 
 	if d.Open {
-		arrow = "▲"
+		arrow = "^"
 		if d.Focused {
 			// Show navigation hint when dropdown is open and focused
 			navHint = " " + lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("(←/→)")

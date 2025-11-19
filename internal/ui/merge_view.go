@@ -323,7 +323,7 @@ func (m MergeViewModel) View() string {
 
 	// Conflict warning
 	if !m.analysis.CanMerge {
-		warning := styles.Warning.Render("[WARNING]") + " " +
+		warning := styles.Warning.Render("✗") + " " +
 			lipgloss.NewStyle().Foreground(styles.ColorError).Render(
 				"Conflicts detected")
 		leftSections = append(leftSections, warning)
@@ -522,9 +522,9 @@ func (m MergeViewModel) renderMergeInfo() string {
 	// Status
 	status := styles.RepoLabel.Render("Status:") + " "
 	if m.analysis.CanMerge {
-		status += lipgloss.NewStyle().Foreground(styles.ColorSuccess).Render("[OK] Ready to merge")
+		status += lipgloss.NewStyle().Foreground(styles.ColorSuccess).Render("✓ Ready to merge")
 	} else {
-		status += lipgloss.NewStyle().Foreground(styles.ColorError).Render("[ERR] Conflicts detected")
+		status += lipgloss.NewStyle().Foreground(styles.ColorError).Render("✗ Conflicts detected")
 	}
 	lines = append(lines, status)
 
@@ -546,7 +546,7 @@ func (m MergeViewModel) renderConflicts() string {
 				fmt.Sprintf("  ... and %d more", len(m.analysis.Conflicts)-5)))
 			break
 		}
-		lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorError).Render("  * "+conflict))
+		lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorError).Render("  ✗ "+conflict))
 	}
 
 	return strings.Join(lines, "\n")
@@ -564,7 +564,7 @@ func (m MergeViewModel) renderCommits() string {
 
 	for i := 0; i < maxCommits; i++ {
 		commit := m.analysis.Commits[i]
-		commitLine := lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("  * ") +
+		commitLine := lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("  - ") +
 			lipgloss.NewStyle().Foreground(styles.ColorPrimary).Render(commit.Hash[:7]) + " " +
 			styles.RepoValue.Render(commit.Message)
 		lines = append(lines, commitLine)
@@ -646,7 +646,7 @@ func (m MergeViewModel) renderStrategy(index int, strategy MergeStrategy) string
 		badge := lipgloss.NewStyle().
 			Foreground(styles.ColorSuccess).
 			Bold(true).
-			Render("[RECOMMENDED]")
+			Render("✓ RECOMMENDED")
 		content[0] = content[0] + " " + badge
 	}
 
