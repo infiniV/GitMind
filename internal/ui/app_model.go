@@ -980,19 +980,25 @@ func (m AppModel) startMergeAnalysis(params map[string]interface{}) tea.Cmd {
 }
 
 // executeCommit executes the selected commit action
-func (m AppModel) executeCommit(option *domain.Alternative) tea.Cmd {
+func (m AppModel) executeCommit(option *CommitOption) tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
 
 		// Create execute use case
 		executeUC := usecase.NewExecuteCommitUseCase(m.gitOps)
 
+		// Use the message from the option if available, otherwise fallback to decision
+		msg := option.Message
+		if msg == nil {
+			msg = m.commitAnalysisResult.Decision.SuggestedMessage()
+		}
+
 		// Build request
 		req := usecase.ExecuteCommitRequest{
 			RepoPath:      m.repoPath,
 			Decision:      m.commitAnalysisResult.Decision,
 			Action:        option.Action,
-			CommitMessage: m.commitAnalysisResult.Decision.SuggestedMessage(),
+			CommitMessage: msg,
 			BranchName:    option.BranchName,
 			StageAll:      true,
 		}
