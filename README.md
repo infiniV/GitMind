@@ -2,18 +2,26 @@
 
 An AI-powered Git CLI manager that makes complex Git workflows simple through intelligent automation.
 
+<p align="center">
+  <img src="resources/dashboard.png" alt="GitMind Dashboard" width="100%">
+</p>
+
 ## Features
 
 ### Core Features
 - **AI-Generated Commit Messages**: Analyzes your changes and generates meaningful, contextual commit messages
+  <p align="center"><img src="resources/commit.png" alt="Commit Analysis" width="90%"/></p>
 - **Smart Workflow Decisions**: Interactive TUI helps you decide between direct commits and feature branches
+  <p align="center"><img src="resources/commit-confirm.png" alt="Commit Confirmation" width="90%"/></p>
 - **Intelligent Merge Suggestions**: AI-powered merge strategy recommendations
+  <p align="center"><img src="resources/merge.png" alt="Merge Analysis" width="90%"/></p>
 - **Free Tier Friendly**: Optimized for free API tiers with graceful degradation and token reduction
 
 ### UI & Configuration
 - **Comprehensive Onboarding Wizard**: Step-by-step setup for new workspaces with 8 guided screens
 - **Tabbed Dashboard Interface**: Switch between Dashboard and Settings with keyboard shortcuts
 - **GitHub Integration**: Create repositories directly from the CLI with full customization
+  <p align="center"><img src="resources/GH.png" alt="GitHub Integration" width="90%"/></p>
 - **Flexible Configuration**: Commit conventions, branch naming patterns, protected branches, and more
 - **Live Settings Editor**: Nested tabs for Git, GitHub, Commits, Naming, and AI settings
 
