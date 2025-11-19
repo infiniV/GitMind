@@ -57,9 +57,9 @@ type DashboardModel struct {
 	submenuIndex  int
 
 	// Submenu options
-	customMessage   string
-	sourceBranch    string
-	targetBranch    string
+	customMessage string
+	sourceBranch  string
+	targetBranch  string
 
 	// State
 	loading   bool
@@ -87,14 +87,14 @@ type errorMsg struct{ err error }
 // NewDashboardModel creates a new dashboard model
 func NewDashboardModel(gitOps git.Operations, repoPath string, config *domain.Config) DashboardModel {
 	return DashboardModel{
-		gitOps:          gitOps,
-		repoPath:        repoPath,
-		config:          config,
-		selectedCard:    0,
-		activeSubmenu:   NoSubmenu,
-		loading:         true,
-		actionParams:    make(map[string]interface{}),
-		version:         "0.1.0", // Default version
+		gitOps:        gitOps,
+		repoPath:      repoPath,
+		config:        config,
+		selectedCard:  0,
+		activeSubmenu: NoSubmenu,
+		loading:       true,
+		actionParams:  make(map[string]interface{}),
+		version:       "0.1.0", // Default version
 	}
 }
 
@@ -393,7 +393,7 @@ func (m DashboardModel) getSubmenuMaxIndex() int {
 		} else {
 			count++ // Setup remote
 		}
-		count++ // Refresh
+		count++          // Refresh
 		return count - 1 // Return max index (count - 1)
 	}
 	return 0
@@ -474,7 +474,7 @@ func (m DashboardModel) renderHeader() string {
 
 	// Combine logo and info sections
 	infoSection := strings.Join(infoLines, "\n")
-	
+
 	// Center the info section vertically relative to the logo (6 lines)
 	// Info has 3 lines, so add padding
 	infoBlock := lipgloss.NewStyle().
@@ -497,9 +497,9 @@ func relativeTime(tStr string) string {
 	if err != nil {
 		return tStr
 	}
-	
+
 	diff := time.Since(t)
-	
+
 	if diff < time.Minute {
 		return "just now"
 	} else if diff < time.Hour {
@@ -586,7 +586,7 @@ func (m DashboardModel) renderCard(index int, title, content string) string {
 	titleLine := styles.CardTitle.Render(title)
 
 	// Content
-	// We don't need to force height here as the style handles it, 
+	// We don't need to force height here as the style handles it,
 	// but we should ensure content doesn't overflow or look empty.
 	contentStyle := lipgloss.NewStyle().Foreground(styles.ColorMuted)
 	contentStr := contentStyle.Render(content)
@@ -608,19 +608,19 @@ func (m DashboardModel) renderRepoStatusCard() string {
 	if len(branch) > 25 {
 		branch = branch[:22] + "..."
 	}
-	lines = append(lines, fmt.Sprintf("%s %s", 
-		lipgloss.NewStyle().Foreground(styles.ColorSecondary).Render(""), 
+	lines = append(lines, fmt.Sprintf("%s %s",
+		lipgloss.NewStyle().Foreground(styles.ColorSecondary).Render(""),
 		lipgloss.NewStyle().Foreground(styles.ColorText).Bold(true).Render(branch)))
 
 	// Changes
 	if m.repo.HasChanges() {
 		stats := fmt.Sprintf("+%d -%d", m.repo.TotalAdditions(), m.repo.TotalDeletions())
-		lines = append(lines, fmt.Sprintf("%s %s", 
-			styles.StatusWarning.Render("●"), 
+		lines = append(lines, fmt.Sprintf("%s %s",
+			styles.StatusWarning.Render("●"),
 			fmt.Sprintf("%d files changed (%s)", m.repo.TotalChanges(), stats)))
 	} else {
-		lines = append(lines, fmt.Sprintf("%s %s", 
-			styles.StatusOk.Render("✓"), 
+		lines = append(lines, fmt.Sprintf("%s %s",
+			styles.StatusOk.Render("✓"),
 			"Working directory clean"))
 	}
 
@@ -631,7 +631,7 @@ func (m DashboardModel) renderRepoStatusCard() string {
 		if m.repo.IsGitHubRemote() {
 			icon = ""
 		}
-		
+
 		statusColor := styles.ColorMuted
 		if syncStatus == "synced" {
 			statusColor = styles.ColorSuccess
@@ -639,11 +639,11 @@ func (m DashboardModel) renderRepoStatusCard() string {
 			statusColor = styles.ColorWarning
 		}
 
-		lines = append(lines, fmt.Sprintf("%s %s", 
+		lines = append(lines, fmt.Sprintf("%s %s",
 			lipgloss.NewStyle().Foreground(styles.ColorPrimary).Render(icon),
 			lipgloss.NewStyle().Foreground(statusColor).Render(syncStatus)))
 	} else {
-		lines = append(lines, fmt.Sprintf("%s %s", 
+		lines = append(lines, fmt.Sprintf("%s %s",
 			lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("☁"),
 			"No remote configured"))
 	}
@@ -658,7 +658,7 @@ func (m DashboardModel) renderCommitCard() string {
 	}
 
 	styles := GetGlobalThemeManager().GetStyles()
-	
+
 	if m.repo.HasChanges() {
 		return fmt.Sprintf("%s\n\n%s\n%s",
 			styles.StatusInfo.Render("Ready to commit"),
@@ -684,12 +684,12 @@ func (m DashboardModel) renderMergeCard() string {
 		if len(parent) > 20 {
 			parent = parent[:17] + "..."
 		}
-		
+
 		status := "Up to date"
 		if m.branchInfo.CommitCount() > 0 {
 			status = fmt.Sprintf("%d commits ahead", m.branchInfo.CommitCount())
 		}
-		
+
 		return fmt.Sprintf("Target: %s\n\n%s\n%s",
 			lipgloss.NewStyle().Foreground(styles.ColorSecondary).Bold(true).Render(parent),
 			status,
@@ -726,9 +726,9 @@ func (m DashboardModel) renderCommitsCard() string {
 		if len(msg) > 20 {
 			msg = msg[:17] + "..."
 		}
-		
+
 		timeStr := relativeTime(commit.Date)
-		
+
 		lines = append(lines, fmt.Sprintf("%s %s", hash, msg))
 		lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("  "+timeStr))
 	}
@@ -761,21 +761,21 @@ func (m DashboardModel) renderBranchesCard() string {
 	for i := 0; i < maxBranches; i++ {
 		branch := m.branches[i]
 		isCurrent := m.repo != nil && branch == m.repo.CurrentBranch()
-		
+
 		prefix := "  "
 		style := lipgloss.NewStyle()
-		
+
 		if isCurrent {
 			prefix = "● "
 			style = style.Foreground(styles.ColorSuccess)
 		} else {
 			style = style.Foreground(styles.ColorMuted)
 		}
-		
+
 		if len(branch) > 25 {
 			branch = branch[:22] + "..."
 		}
-		
+
 		lines = append(lines, style.Render(prefix+branch))
 	}
 
@@ -785,11 +785,11 @@ func (m DashboardModel) renderBranchesCard() string {
 // renderActionsCard renders quick actions card content
 func (m DashboardModel) renderActionsCard() string {
 	styles := GetGlobalThemeManager().GetStyles()
-	
+
 	return fmt.Sprintf("%s\n\n%s\n%s",
 		"Shortcuts:",
-		styles.ShortcutKey.Render("r") + " Refresh",
-		styles.ShortcutKey.Render("?") + " Help Menu")
+		styles.ShortcutKey.Render("r")+" Refresh",
+		styles.ShortcutKey.Render("?")+" Help Menu")
 }
 
 // renderSubmenu renders the active submenu as an overlay
@@ -1223,10 +1223,10 @@ func (m DashboardModel) renderRepositoryDetailsMenu() string {
 // renderFooter renders dashboard footer
 func (m DashboardModel) renderFooter() string {
 	styles := GetGlobalThemeManager().GetStyles()
-	
+
 	// Minimal footer
 	return styles.Footer.Render(
-		fmt.Sprintf("%s navigate  •  %s select  •  %s quit", 
+		fmt.Sprintf("%s navigate  •  %s select  •  %s quit",
 			styles.ShortcutKey.Render("arrows"),
 			styles.ShortcutKey.Render("enter"),
 			styles.ShortcutKey.Render("q"),
