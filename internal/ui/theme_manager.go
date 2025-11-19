@@ -96,6 +96,13 @@ type ThemeStyles struct {
 	FormHelp            lipgloss.Style
 	FormButton          lipgloss.Style
 	FormButtonInactive  lipgloss.Style
+
+	// Filter and list styles
+	FilterActive        lipgloss.Style
+	FilterInactive      lipgloss.Style
+	ListItemSelected    lipgloss.Style
+	ListItemNormal      lipgloss.Style
+	ViewportStyle       lipgloss.Style
 }
 
 // NewThemeManager creates a new theme manager with the specified theme.
@@ -389,6 +396,31 @@ func (tm *ThemeManager) regenerateStyles() {
 		Foreground(colorMuted).
 		Background(lipgloss.Color(bg.FormInput)).
 		Padding(0, 2)
+
+	// Filter and list styles
+	tm.styles.FilterActive = lipgloss.NewStyle().
+		Foreground(colorText).
+		Background(colorPrimary).
+		Padding(0, 2).
+		Bold(true)
+
+	tm.styles.FilterInactive = lipgloss.NewStyle().
+		Foreground(colorMuted).
+		Background(lipgloss.Color(bg.FormInput)).
+		Padding(0, 2)
+
+	tm.styles.ListItemSelected = lipgloss.NewStyle().
+		Foreground(colorText).
+		Background(colorSelected).
+		Bold(true)
+
+	tm.styles.ListItemNormal = lipgloss.NewStyle().
+		Foreground(colorText)
+
+	tm.styles.ViewportStyle = lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(colorBorder).
+		Padding(1, 2)
 }
 
 // GetConfidenceBadge returns a styled confidence badge.

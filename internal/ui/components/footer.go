@@ -233,6 +233,62 @@ func OnboardFooter(step, totalSteps int, width int) string {
 	return footer.WithMetadata(metadata).WithWidth(width).Render()
 }
 
+// PRListFooter creates a footer for the PR list view
+func PRListFooter(state string, metadata string, width int) string {
+	var shortcuts []Shortcut
+
+	switch state {
+	case "list":
+		shortcuts = []Shortcut{
+			{Key: "↑↓", Description: "navigate"},
+			{Key: "enter", Description: "view detail"},
+			{Key: "a/o/c/m/d", Description: "filter"},
+			{Key: "r", Description: "refresh"},
+			{Key: "esc", Description: "back"},
+		}
+	default:
+		shortcuts = []Shortcut{
+			{Key: "↑↓", Description: "navigate"},
+			{Key: "enter", Description: "view detail"},
+			{Key: "esc", Description: "back"},
+		}
+	}
+
+	footer := NewFooter(shortcuts)
+	return footer.WithMetadata(metadata).WithWidth(width).Render()
+}
+
+// PRDetailFooter creates a footer for the PR detail view
+func PRDetailFooter(state string, metadata string, width int) string {
+	var shortcuts []Shortcut
+
+	switch state {
+	case "viewing":
+		shortcuts = []Shortcut{
+			{Key: "↑↓", Description: "scroll"},
+			{Key: "u", Description: "update"},
+			{Key: "c", Description: "close"},
+			{Key: "m", Description: "merge"},
+			{Key: "d", Description: "toggle draft"},
+			{Key: "esc", Description: "back"},
+		}
+	case "updating":
+		shortcuts = []Shortcut{
+			{Key: "tab", Description: "next field"},
+			{Key: "enter", Description: "save"},
+			{Key: "esc", Description: "cancel"},
+		}
+	default:
+		shortcuts = []Shortcut{
+			{Key: "↑↓", Description: "scroll"},
+			{Key: "esc", Description: "back"},
+		}
+	}
+
+	footer := NewFooter(shortcuts)
+	return footer.WithMetadata(metadata).WithWidth(width).Render()
+}
+
 // HelpText renders help text in a consistent format
 func HelpText(parts ...string) string {
 	styles := ui.GetGlobalThemeManager().GetStyles()
