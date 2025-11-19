@@ -41,6 +41,8 @@ const (
 	ActionViewGitHub
 	ActionShowGitHubInfo
 	ActionSetupRemote
+	ActionListPRs
+	ActionCreatePR
 )
 
 // DashboardModel represents the state of the dashboard view
@@ -279,11 +281,24 @@ func (m DashboardModel) handleSubmenuSelection() (tea.Model, tea.Cmd) {
 		}
 
 	case MergeOptionsMenu:
-		if m.submenuIndex == 0 {
+		switch m.submenuIndex {
+		case 0:
 			// Execute merge
 			m.action = ActionMerge
 			m.actionParams["source"] = m.sourceBranch
 			m.actionParams["target"] = m.targetBranch
+			m.activeSubmenu = NoSubmenu
+			m.submenuIndex = 0
+			return m, nil
+		case 1:
+			// List pull requests
+			m.action = ActionListPRs
+			m.activeSubmenu = NoSubmenu
+			m.submenuIndex = 0
+			return m, nil
+		case 2:
+			// Create pull request
+			m.action = ActionCreatePR
 			m.activeSubmenu = NoSubmenu
 			m.submenuIndex = 0
 			return m, nil
@@ -381,7 +396,7 @@ func (m DashboardModel) getSubmenuMaxIndex() int {
 	case CommitOptionsMenu:
 		return 0 // 1 option: execute
 	case MergeOptionsMenu:
-		return 0 // 1 option: execute
+		return 2 // 3 options: merge, list PRs, create PR
 	case CommitListMenu:
 		return len(m.recentCommits) - 1
 	case BranchListMenu:
@@ -878,10 +893,10 @@ func (m DashboardModel) renderCommitOptionsMenu() string {
 func (m DashboardModel) renderMergeOptionsMenu() string {
 	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
-	lines = append(lines, styles.CardTitle.Render("Merge Options"))
+	lines = append(lines, styles.CardTitle.Render("Merge/PR Options"))
 	lines = append(lines, "")
 
-	// Option 0: Execute
+	// Option 0: Auto-detect and merge
 	opt0 := "  Auto-detect and merge"
 	if m.submenuIndex == 0 {
 		opt0 = styles.SubmenuOptionActive.Render("> " + styles.StatusInfo.Render("Auto-detect and merge"))
@@ -889,6 +904,24 @@ func (m DashboardModel) renderMergeOptionsMenu() string {
 		opt0 = styles.SubmenuOption.Render(opt0)
 	}
 	lines = append(lines, opt0)
+
+	// Option 1: List pull requests
+	opt1 := "  List pull requests"
+	if m.submenuIndex == 1 {
+		opt1 = styles.SubmenuOptionActive.Render("> " + styles.StatusInfo.Render("List pull requests"))
+	} else {
+		opt1 = styles.SubmenuOption.Render(opt1)
+	}
+	lines = append(lines, opt1)
+
+	// Option 2: Create pull request
+	opt2 := "  Create pull request"
+	if m.submenuIndex == 2 {
+		opt2 = styles.SubmenuOptionActive.Render("> " + styles.StatusInfo.Render("Create pull request"))
+	} else {
+		opt2 = styles.SubmenuOption.Render(opt2)
+	}
+	lines = append(lines, opt2)
 
 	lines = append(lines, "")
 	lines = append(lines, styles.ShortcutDesc.Render("Enter: select  •  Esc: cancel"))

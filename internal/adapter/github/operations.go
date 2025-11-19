@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -394,15 +395,73 @@ func ListPRs(ctx context.Context, repoPath string, state string) ([]*domain.PRIn
 	}
 
 	// Parse JSON output
-	// For now, use simple parsing (TODO: proper JSON unmarshaling)
-	outputStr := string(output)
-	if strings.TrimSpace(outputStr) == "[]" {
+	outputStr := strings.TrimSpace(string(output))
+	if outputStr == "[]" || outputStr == "" {
 		return []*domain.PRInfo{}, nil
 	}
 
-	// This is a simplified implementation
-	// In production, use encoding/json to unmarshal properly
-	return []*domain.PRInfo{}, nil
+	// Parse JSON array
+	var rawPRs []map[string]interface{}
+	if err := json.Unmarshal([]byte(outputStr), &rawPRs); err != nil {
+		return nil, fmt.Errorf("failed to parse PR list JSON: %w", err)
+	}
+
+	// Convert to domain.PRInfo
+	prs := make([]*domain.PRInfo, 0, len(rawPRs))
+	for _, rawPR := range rawPRs {
+		number, _ := rawPR["number"].(float64)
+		title, _ := rawPR["title"].(string)
+		state, _ := rawPR["state"].(string)
+
+		// Author
+		author := ""
+		if authorMap, ok := rawPR["author"].(map[string]interface{}); ok {
+			if login, ok := authorMap["login"].(string); ok {
+				author = login
+			}
+		}
+
+		baseRef, _ := rawPR["baseRefName"].(string)
+		headRef, _ := rawPR["headRefName"].(string)
+		isDraft, _ := rawPR["isDraft"].(bool)
+		url, _ := rawPR["url"].(string)
+
+		// Create PR info
+		prInfo, err := domain.NewPRInfo(int(number), title, author, baseRef, headRef)
+		if err != nil {
+			continue // Skip invalid PRs
+		}
+
+		// Set state
+		switch strings.ToUpper(state) {
+		case "OPEN":
+			prInfo.SetState(domain.PRStatusOpen)
+		case "CLOSED":
+			prInfo.SetState(domain.PRStatusClosed)
+		case "MERGED":
+			prInfo.SetState(domain.PRStatusMerged)
+		}
+
+		prInfo.SetIsDraft(isDraft)
+		prInfo.SetHTMLURL(url)
+
+		// Parse labels
+		if labelsRaw, ok := rawPR["labels"].([]interface{}); ok {
+			labels := make([]string, 0, len(labelsRaw))
+			for _, labelRaw := range labelsRaw {
+				if labelMap, ok := labelRaw.(map[string]interface{}); ok {
+					if name, ok := labelMap["name"].(string); ok {
+						labels = append(labels, name)
+					}
+				}
+			}
+			prInfo.SetLabels(labels)
+		}
+
+		prs = append(prs, prInfo)
+	}
+
+	return prs, nil
 }
 
 // GetPR gets details of a specific pull request
@@ -424,61 +483,66 @@ func GetPR(ctx context.Context, repoPath string, number int) (*domain.PRInfo, er
 		return nil, fmt.Errorf("failed to get PR: %s: %w", string(output), err)
 	}
 
-	outputStr := string(output)
+	outputStr := strings.TrimSpace(string(output))
+	if outputStr == "" {
+		return nil, fmt.Errorf("empty response from gh pr view")
+	}
 
-	// Parse JSON output (simplified parsing)
-	prInfo, err := domain.NewPRInfo(number, "PR Title", "author", "main", "feature")
+	// Parse JSON output
+	var rawPR map[string]interface{}
+	if err := json.Unmarshal([]byte(outputStr), &rawPR); err != nil {
+		return nil, fmt.Errorf("failed to parse PR JSON: %w", err)
+	}
+
+	// Extract fields
+	title, _ := rawPR["title"].(string)
+	body, _ := rawPR["body"].(string)
+	state, _ := rawPR["state"].(string)
+
+	// Author
+	author := ""
+	if authorMap, ok := rawPR["author"].(map[string]interface{}); ok {
+		if login, ok := authorMap["login"].(string); ok {
+			author = login
+		}
+	}
+
+	baseRef, _ := rawPR["baseRefName"].(string)
+	headRef, _ := rawPR["headRefName"].(string)
+	isDraft, _ := rawPR["isDraft"].(bool)
+	url, _ := rawPR["url"].(string)
+
+	// Create PR info
+	prInfo, err := domain.NewPRInfo(number, title, author, baseRef, headRef)
 	if err != nil {
 		return nil, err
 	}
 
-	// Extract title
-	if strings.Contains(outputStr, `"title":"`) {
-		parts := strings.Split(outputStr, `"title":"`)
-		if len(parts) > 1 {
-			endIndex := strings.Index(parts[1], `"`)
-			if endIndex > 0 {
-				prInfo.SetTitle(parts[1][:endIndex])
-			}
-		}
-	}
+	prInfo.SetBody(body)
+	prInfo.SetIsDraft(isDraft)
+	prInfo.SetHTMLURL(url)
 
-	// Extract body
-	if strings.Contains(outputStr, `"body":"`) {
-		parts := strings.Split(outputStr, `"body":"`)
-		if len(parts) > 1 {
-			endIndex := strings.Index(parts[1], `"`)
-			if endIndex > 0 {
-				prInfo.SetBody(parts[1][:endIndex])
-			}
-		}
-	}
-
-	// Extract URL
-	if strings.Contains(outputStr, `"url":"`) {
-		parts := strings.Split(outputStr, `"url":"`)
-		if len(parts) > 1 {
-			endIndex := strings.Index(parts[1], `"`)
-			if endIndex > 0 {
-				prInfo.SetHTMLURL(parts[1][:endIndex])
-			}
-		}
-	}
-
-	// Extract draft status
-	if strings.Contains(outputStr, `"isDraft":true`) {
-		prInfo.SetIsDraft(true)
-	}
-
-	// Extract state
-	if strings.Contains(outputStr, `"state":"MERGED"`) {
-		prInfo.SetState(domain.PRStatusMerged)
-	} else if strings.Contains(outputStr, `"state":"CLOSED"`) {
-		prInfo.SetState(domain.PRStatusClosed)
-	} else if prInfo.IsDraft() {
-		prInfo.SetState(domain.PRStatusDraft)
-	} else {
+	// Set state
+	switch strings.ToUpper(state) {
+	case "OPEN":
 		prInfo.SetState(domain.PRStatusOpen)
+	case "CLOSED":
+		prInfo.SetState(domain.PRStatusClosed)
+	case "MERGED":
+		prInfo.SetState(domain.PRStatusMerged)
+	}
+
+	// Parse labels
+	if labelsRaw, ok := rawPR["labels"].([]interface{}); ok {
+		labels := make([]string, 0, len(labelsRaw))
+		for _, labelRaw := range labelsRaw {
+			if labelMap, ok := labelRaw.(map[string]interface{}); ok {
+				if name, ok := labelMap["name"].(string); ok {
+					labels = append(labels, name)
+				}
+			}
+		}
+		prInfo.SetLabels(labels)
 	}
 
 	return prInfo, nil
