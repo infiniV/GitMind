@@ -133,18 +133,9 @@ func (m MergeViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		innerWidth := cardWidth - 4
 		
 		viewportWidth := innerWidth - 2 // Account for padding
-		
-		// Calculate available height for viewport
-		// Fixed elements approx height:
-		// Header: 1
-		// Merge Info: 2
-		// Commits: 3 (if limited)
-		// Message: 3
-		// Strategies Title: 2
-		// Footer: 2
-		// Padding: 4
-		// Total: ~17 lines
-		viewportHeight := msg.Height - 17
+
+		// Calculate available height for viewport using consistent calculation
+		viewportHeight := msg.Height - 17 // Logo + header + content + footer + margins
 		if viewportHeight < 5 {
 			viewportHeight = 5
 		}

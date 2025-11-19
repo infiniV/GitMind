@@ -15,6 +15,8 @@ type TextInput struct {
 	Password    bool
 	Focused     bool
 	Width       int
+	Error       string // Validation error message
+	ShowError   bool   // Whether to show the error
 }
 
 // NewTextInput creates a new text input
@@ -26,7 +28,21 @@ func NewTextInput(label, placeholder string) TextInput {
 		Password:    false,
 		Focused:     false,
 		Width:       40,
+		Error:       "",
+		ShowError:   false,
 	}
+}
+
+// SetError sets an error message on the input
+func (t *TextInput) SetError(error string) {
+	t.Error = error
+	t.ShowError = error != ""
+}
+
+// ClearError clears the error message
+func (t *TextInput) ClearError() {
+	t.Error = ""
+	t.ShowError = false
 }
 
 // Update handles key input for text input
@@ -89,8 +105,17 @@ func (t TextInput) View() string {
 
 	input := inputStyle.Render(displayValue)
 
-	// Align label and input vertically to the center
-	return lipgloss.JoinHorizontal(lipgloss.Center, label, " ", input)
+	// Build the result
+	result := lipgloss.JoinHorizontal(lipgloss.Center, label, " ", input)
+
+	// Add error message if present
+	if t.ShowError && t.Error != "" {
+		errorStyle := styles.StatusError
+		errorMsg := errorStyle.Render("✗ " + t.Error)
+		result += "\n" + errorMsg
+	}
+
+	return result
 }
 
 // Checkbox represents a single checkbox
@@ -314,24 +339,40 @@ func (b Button) View() string {
 
 // Dropdown represents a dropdown/select component
 type Dropdown struct {
-	Label    string
-	Options  []string
-	Selected int
-	Focused  bool
-	Open     bool
-	Width    int
+	Label     string
+	Options   []string
+	Selected  int
+	Focused   bool
+	Open      bool
+	Width     int
+	Error     string // Validation error message
+	ShowError bool   // Whether to show the error
 }
 
 // NewDropdown creates a new dropdown
 func NewDropdown(label string, options []string, defaultIndex int) Dropdown {
 	return Dropdown{
-		Label:    label,
-		Options:  options,
-		Selected: defaultIndex,
-		Focused:  false,
-		Open:     false,
-		Width:    38,
+		Label:     label,
+		Options:   options,
+		Selected:  defaultIndex,
+		Focused:   false,
+		Open:      false,
+		Width:     38,
+		Error:     "",
+		ShowError: false,
 	}
+}
+
+// SetError sets an error message on the dropdown
+func (d *Dropdown) SetError(error string) {
+	d.Error = error
+	d.ShowError = error != ""
+}
+
+// ClearError clears the error message
+func (d *Dropdown) ClearError() {
+	d.Error = ""
+	d.ShowError = false
 }
 
 // Next moves to next option
@@ -389,6 +430,13 @@ func (d Dropdown) View() string {
 			}
 		}
 		result += "\n" + strings.Join(options, "\n")
+	}
+
+	// Add error message if present
+	if d.ShowError && d.Error != "" {
+		errorStyle := styles.StatusError
+		errorMsg := errorStyle.Render("✗ " + d.Error)
+		result += "\n" + errorMsg
 	}
 
 	return result
