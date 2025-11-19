@@ -11,7 +11,7 @@ import (
 
 // AnalyzeCommitUseCase orchestrates the commit analysis workflow.
 type AnalyzeCommitUseCase struct {
-	gitOps   git.Operations
+	gitOps     git.Operations
 	aiProvider ai.Provider
 }
 
