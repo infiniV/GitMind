@@ -616,20 +616,20 @@ func (m DashboardModel) renderRepoStatusCard() string {
 	if m.repo.HasChanges() {
 		stats := fmt.Sprintf("+%d -%d", m.repo.TotalAdditions(), m.repo.TotalDeletions())
 		lines = append(lines, fmt.Sprintf("%s %s",
-			styles.StatusWarning.Render("●"),
+			styles.StatusWarning.Render("*"),
 			fmt.Sprintf("%d files changed (%s)", m.repo.TotalChanges(), stats)))
 	} else {
 		lines = append(lines, fmt.Sprintf("%s %s",
-			styles.StatusOk.Render("✓"),
+			styles.StatusOk.Render("[OK]"),
 			"Working directory clean"))
 	}
 
 	// Remote
 	if m.repo.HasRemote() {
 		syncStatus := m.repo.SyncStatusSummary()
-		icon := "☁"
+		icon := "[REMOTE]"
 		if m.repo.IsGitHubRemote() {
-			icon = ""
+			icon = "[GITHUB]"
 		}
 
 		statusColor := styles.ColorMuted
@@ -644,7 +644,7 @@ func (m DashboardModel) renderRepoStatusCard() string {
 			lipgloss.NewStyle().Foreground(statusColor).Render(syncStatus)))
 	} else {
 		lines = append(lines, fmt.Sprintf("%s %s",
-			lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("☁"),
+			lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("[REMOTE]"),
 			"No remote configured"))
 	}
 
@@ -766,7 +766,7 @@ func (m DashboardModel) renderBranchesCard() string {
 		style := lipgloss.NewStyle()
 
 		if isCurrent {
-			prefix = "● "
+			prefix = "* "
 			style = style.Foreground(styles.ColorSuccess)
 		} else {
 			style = style.Foreground(styles.ColorMuted)
@@ -836,7 +836,7 @@ func (m DashboardModel) renderCommitOptionsMenu() string {
 	// Option 0: Execute
 	opt0 := "  Analyze and commit"
 	if m.submenuIndex == 0 {
-		opt0 = styles.SubmenuOptionActive.Render("▶ " + styles.StatusInfo.Render("Analyze and commit"))
+		opt0 = styles.SubmenuOptionActive.Render("> " + styles.StatusInfo.Render("Analyze and commit"))
 	} else {
 		opt0 = styles.SubmenuOption.Render(opt0)
 	}
@@ -858,7 +858,7 @@ func (m DashboardModel) renderMergeOptionsMenu() string {
 	// Option 0: Execute
 	opt0 := "  Auto-detect and merge"
 	if m.submenuIndex == 0 {
-		opt0 = styles.SubmenuOptionActive.Render("▶ " + styles.StatusInfo.Render("Auto-detect and merge"))
+		opt0 = styles.SubmenuOptionActive.Render("> " + styles.StatusInfo.Render("Auto-detect and merge"))
 	} else {
 		opt0 = styles.SubmenuOption.Render(opt0)
 	}
@@ -895,7 +895,7 @@ func (m DashboardModel) renderCommitListMenu() string {
 
 			line := fmt.Sprintf("%s  %s", hash, msg)
 			if i == m.submenuIndex {
-				line = styles.SubmenuOptionActive.Render("▶ " + line)
+				line = styles.SubmenuOptionActive.Render("> " + line)
 			} else {
 				line = styles.SubmenuOption.Render("  " + line)
 			}
@@ -935,7 +935,7 @@ func (m DashboardModel) renderBranchListMenu() string {
 
 			line := indicator + branch
 			if i == m.submenuIndex {
-				line = styles.SubmenuOptionActive.Render("▶ " + line)
+				line = styles.SubmenuOptionActive.Render("> " + line)
 			} else {
 				line = styles.SubmenuOption.Render("  " + line)
 			}
@@ -1140,7 +1140,7 @@ func (m DashboardModel) renderRepositoryDetailsMenu() string {
 		// Fetch
 		fetchLine := "Fetch from remote"
 		if actionIndex == m.submenuIndex {
-			fetchLine = styles.SubmenuOptionActive.Render("▶ " + fetchLine)
+			fetchLine = styles.SubmenuOptionActive.Render("> " + fetchLine)
 		} else {
 			fetchLine = styles.SubmenuOption.Render("  " + fetchLine)
 		}
@@ -1151,7 +1151,7 @@ func (m DashboardModel) renderRepositoryDetailsMenu() string {
 		if m.repo.CommitsBehind() > 0 {
 			pullLine := fmt.Sprintf("Pull from remote (↓%d available)", m.repo.CommitsBehind())
 			if actionIndex == m.submenuIndex {
-				pullLine = styles.SubmenuOptionActive.Render("▶ " + pullLine)
+				pullLine = styles.SubmenuOptionActive.Render("> " + pullLine)
 			} else {
 				pullLine = styles.SubmenuOption.Render("  " + pullLine)
 			}
@@ -1163,7 +1163,7 @@ func (m DashboardModel) renderRepositoryDetailsMenu() string {
 		if m.repo.CommitsAhead() > 0 {
 			pushLine := fmt.Sprintf("Push to remote (↑%d commits)", m.repo.CommitsAhead())
 			if actionIndex == m.submenuIndex {
-				pushLine = styles.SubmenuOptionActive.Render("▶ " + pushLine)
+				pushLine = styles.SubmenuOptionActive.Render("> " + pushLine)
 			} else {
 				pushLine = styles.SubmenuOption.Render("  " + pushLine)
 			}
@@ -1176,7 +1176,7 @@ func (m DashboardModel) renderRepositoryDetailsMenu() string {
 			// View on GitHub (web)
 			githubLine := "View on GitHub (web)"
 			if actionIndex == m.submenuIndex {
-				githubLine = styles.SubmenuOptionActive.Render("▶ " + githubLine)
+				githubLine = styles.SubmenuOptionActive.Render("> " + githubLine)
 			} else {
 				githubLine = styles.SubmenuOption.Render("  " + githubLine)
 			}
@@ -1186,7 +1186,7 @@ func (m DashboardModel) renderRepositoryDetailsMenu() string {
 			// Show GitHub info
 			infoLine := "Show GitHub info"
 			if actionIndex == m.submenuIndex {
-				infoLine = styles.SubmenuOptionActive.Render("▶ " + infoLine)
+				infoLine = styles.SubmenuOptionActive.Render("> " + infoLine)
 			} else {
 				infoLine = styles.SubmenuOption.Render("  " + infoLine)
 			}
@@ -1197,7 +1197,7 @@ func (m DashboardModel) renderRepositoryDetailsMenu() string {
 		// Setup remote
 		setupLine := "Set up remote"
 		if actionIndex == m.submenuIndex {
-			setupLine = styles.SubmenuOptionActive.Render("▶ " + setupLine)
+			setupLine = styles.SubmenuOptionActive.Render("> " + setupLine)
 		} else {
 			setupLine = styles.SubmenuOption.Render("  " + setupLine)
 		}
@@ -1208,7 +1208,7 @@ func (m DashboardModel) renderRepositoryDetailsMenu() string {
 	// Refresh (always last)
 	refreshLine := "Refresh status"
 	if actionIndex == m.submenuIndex {
-		refreshLine = styles.SubmenuOptionActive.Render("▶ " + refreshLine)
+		refreshLine = styles.SubmenuOptionActive.Render("> " + refreshLine)
 	} else {
 		refreshLine = styles.SubmenuOption.Render("  " + refreshLine)
 	}
