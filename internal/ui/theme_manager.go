@@ -363,6 +363,8 @@ func (tm *ThemeManager) regenerateStyles() {
 	tm.styles.FormInput = lipgloss.NewStyle().
 		Foreground(colorText).
 		Background(lipgloss.Color(bg.FormInput)).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorBorder).
 		Padding(0, 1)
 
 	tm.styles.FormInputFocused = lipgloss.NewStyle().
