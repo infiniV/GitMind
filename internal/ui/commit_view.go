@@ -211,23 +211,29 @@ func (m CommitViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.windowHeight = msg.Height
 
 		// Update viewport size on window resize
-		// Match the pane width calculation (48/52 split)
-		totalMargins := 4
-		dividerWidth := 1
-		usableWidth := msg.Width - totalMargins - dividerWidth
-		leftWidth := int(float64(usableWidth) * 0.48)
-		rightWidth := usableWidth - leftWidth
-
-		// Viewport should be nearly as wide as the right pane to allow content to expand
-		// Just subtract small margin for title/padding
-		viewportWidth := rightWidth - 2
-		viewportHeight := msg.Height - 15 // Account for header, footer, etc.
+		// Use full width for vertical layout
+		cardWidth := msg.Width - 4
+		if cardWidth < 80 {
+			cardWidth = 80
+		}
+		innerWidth := cardWidth - 4
+		
+		viewportWidth := innerWidth - 2 // Account for padding
+		
+		// Calculate available height for viewport
+		// Fixed elements approx height:
+		// Header: 1
+		// Repo Info: 2
+		// Commit Msg: 4
+		// Actions Title: 2
+		// Footer: 2
+		// Padding/Margins: 4
+		// Total: ~15 lines
+		viewportHeight := msg.Height - 15
 		if viewportHeight < 5 {
 			viewportHeight = 5
 		}
-		if viewportWidth < 30 {
-			viewportWidth = 30
-		}
+		
 		m.viewport.Width = viewportWidth
 		m.viewport.Height = viewportHeight
 
@@ -407,7 +413,7 @@ func (m CommitViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// View renders the UI with two-pane layout.
+// View renders the UI with a master-detail layout.
 func (m CommitViewModel) View() string {
 	styles := GetGlobalThemeManager().GetStyles()
 
@@ -424,121 +430,149 @@ func (m CommitViewModel) View() string {
 			Render("Initializing commit view...")
 	}
 
-	// Render confirmation modal if in confirm state
 	if m.state == ViewStateConfirm {
 		return m.renderConfirmationModal()
 	}
 
-	// Calculate pane widths with divider space
-	// Use almost all available width, leaving small margins
-	// Left pane: 48%, Right pane: 52% (balanced for ASCII art and descriptions)
-	totalMargins := 4 // Small margins on edges
-	dividerWidth := 1
-	usableWidth := m.windowWidth - totalMargins - dividerWidth
-
-	leftWidth := int(float64(usableWidth) * 0.48)
-	rightWidth := usableWidth - leftWidth
-
-	// Ensure minimum widths
-	if leftWidth < 60 {
-		leftWidth = 60
-	}
-	if rightWidth < 60 {
-		rightWidth = 60
+	// Layout Dimensions
+	headerHeight := 8 // Logo (6) + Info (1) + Padding (1)
+	footerHeight := 2
+	contentHeight := m.windowHeight - headerHeight - footerHeight
+	if contentHeight < 10 {
+		contentHeight = 10
 	}
 
-	// LEFT PANE: ASCII art, repo info, commit message
-	var leftSections []string
+	// 1. Header Section (Logo + Repo Info)
+	logo := m.renderLogo()
+	repoInfo := m.renderRepoInfoCompact()
+	header := lipgloss.JoinVertical(lipgloss.Left, logo, repoInfo)
 
-	// ASCII art header for COMMIT
-	logoStyle := lipgloss.NewStyle().
+	// 2. Main Content (Split View)
+	// Left: Options Menu (30%)
+	// Right: Details & Context (70%)
+	
+	totalWidth := m.windowWidth - 4
+	leftWidth := int(float64(totalWidth) * 0.35)
+	rightWidth := totalWidth - leftWidth - 3 // -3 for divider/padding
+
+	if leftWidth < 25 { leftWidth = 25 }
+	if rightWidth < 40 { rightWidth = 40 }
+
+	// Left Pane: Options List
+	m.viewport.Width = leftWidth
+	m.viewport.Height = contentHeight
+	m.viewport.SetContent(m.renderOptionList(leftWidth))
+	
+	leftPane := lipgloss.NewStyle().
+		Width(leftWidth).
+		Height(contentHeight).
+		Render(m.viewport.View())
+
+	// Right Pane: Details
+	rightPane := m.renderDetailsPane(rightWidth, contentHeight)
+
+	// Divider
+	divider := lipgloss.NewStyle().
+		Foreground(styles.ColorBorder).
+		Height(contentHeight).
+		Render(" │ ")
+
+	mainContent := lipgloss.JoinHorizontal(lipgloss.Top,
+		leftPane,
+		divider,
+		rightPane,
+	)
+
+	// Wrap main content in a card/box if desired, or just keep it clean
+	// The user wants "compact", so minimal borders is better.
+	
+	// Footer
+	footer := m.renderFooter()
+
+	return lipgloss.JoinVertical(lipgloss.Left,
+		header,
+		"", // Spacer
+		mainContent,
+		footer,
+	)
+}
+
+func (m CommitViewModel) renderLogo() string {
+	styles := GetGlobalThemeManager().GetStyles()
+	return lipgloss.NewStyle().
 		Foreground(styles.ColorPrimary).
-		Bold(true)
-
-	logo := logoStyle.Render(
+		Bold(true).
+		Render(
 		`  ██████╗ ██████╗ ███╗   ███╗███╗   ███╗██╗████████╗
  ██╔════╝██╔═══██╗████╗ ████║████╗ ████║██║╚══██╔══╝
  ██║     ██║   ██║██╔████╔██║██╔████╔██║██║   ██║
  ██║     ██║   ██║██║╚██╔╝██║██║╚██╔╝██║██║   ██║
  ╚██████╗╚██████╔╝██║ ╚═╝ ██║██║ ╚═╝ ██║██║   ██║
   ╚═════╝ ╚═════╝ ╚═╝     ╚═╝╚═╝     ╚═╝╚═╝   ╚═╝`)
+}
 
-	leftSections = append(leftSections, logo)
-	leftSections = append(leftSections, "")
+func (m CommitViewModel) renderOptionList(width int) string {
+	styles := GetGlobalThemeManager().GetStyles()
+	var lines []string
 
-	repoInfo := m.renderRepoInfo()
-	leftSections = append(leftSections, repoInfo)
+	lines = append(lines, styles.SectionTitle.Render("ACTIONS"))
+	lines = append(lines, "")
 
-	if !m.repo.HasRemote() {
-		warning := styles.Warning.Render("ℹ") + " " +
-			lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(
-				"No remote configured")
-		leftSections = append(leftSections, warning)
+	for i, option := range m.options {
+		isSelected := i == m.selectedIndex
+		
+		label := fmt.Sprintf("%d. %s", i+1, option.Label)
+		
+		var style lipgloss.Style
+		if isSelected {
+			style = styles.TabActive.Copy().Width(width).Padding(0, 1)
+			label = "> " + label
+		} else {
+			style = styles.TabInactive.Copy().Width(width).Padding(0, 1)
+			label = "  " + label
+		}
+		
+		lines = append(lines, style.Render(label))
+		lines = append(lines, "") // Spacing
 	}
+	
+	return strings.Join(lines, "\n")
+}
 
-	leftSections = append(leftSections, "")
-	leftSections = append(leftSections, renderSeparator(leftWidth))
-	leftSections = append(leftSections, "")
-
-	commitBox := m.renderCommitMessage()
-	leftSections = append(leftSections, commitBox)
-
-	leftPane := lipgloss.NewStyle().
-		Width(leftWidth).
-		MaxWidth(leftWidth).
-		Render(lipgloss.JoinVertical(lipgloss.Left, leftSections...))
-
-	// DIVIDER: Vertical line separator
-	dividerHeight := m.windowHeight - 5 // Account for footer
-	if dividerHeight < 5 {
-		dividerHeight = 5
+func (m CommitViewModel) renderDetailsPane(width, height int) string {
+	styles := GetGlobalThemeManager().GetStyles()
+	selectedOption := m.options[m.selectedIndex]
+	
+	var sections []string
+	
+	// 1. Description of Action
+	title := styles.SectionTitle.Render("DETAILS")
+	sections = append(sections, title)
+	
+	desc := wrapText(selectedOption.Description, width)
+	sections = append(sections, styles.Description.Render(desc))
+	
+	sections = append(sections, "")
+	sections = append(sections, styles.SectionTitle.Render("CONTEXT"))
+	
+	// 2. Commit Message Preview (if applicable)
+	if selectedOption.Message != nil {
+		msgBox := styles.CommitBox.Copy().Width(width).Render(
+			wrapText(selectedOption.Message.Title(), width-4))
+		sections = append(sections, msgBox)
 	}
-	dividerLines := make([]string, dividerHeight)
-	dividerChar := lipgloss.NewStyle().
-		Foreground(styles.ColorBorder).
-		Render("│")
-	for i := range dividerLines {
-		dividerLines[i] = dividerChar
+	
+	// 3. Branch Info (if applicable)
+	if selectedOption.BranchName != "" {
+		branchInfo := fmt.Sprintf("Target Branch: %s", selectedOption.BranchName)
+		sections = append(sections, styles.RepoValue.Render(branchInfo))
 	}
-	divider := strings.Join(dividerLines, "\n")
+	
+	// 4. Confidence
+	conf := fmt.Sprintf("AI Confidence: %.0f%%", selectedOption.Confidence*100)
+	sections = append(sections, styles.Metadata.Render(conf))
 
-	// RIGHT PANE: Options with viewport
-	var rightSections []string
-
-	optionsTitle := styles.SectionTitle.Render("Actions")
-	rightSections = append(rightSections, optionsTitle)
-	rightSections = append(rightSections, "")
-
-	// Viewport with scrollable options
-	viewportContent := m.viewport.View()
-	rightSections = append(rightSections, viewportContent)
-
-	// Scroll indicator
-	if m.viewport.TotalLineCount() > m.viewport.Height {
-		scrollIndicator := lipgloss.NewStyle().
-			Foreground(styles.ColorMuted).
-			Render(fmt.Sprintf("(%d%% scrolled)", int(m.viewport.ScrollPercent()*100)))
-		rightSections = append(rightSections, "")
-		rightSections = append(rightSections, scrollIndicator)
-	}
-
-	rightPane := lipgloss.NewStyle().
-		Width(rightWidth).
-		MaxWidth(rightWidth).
-		Render(lipgloss.JoinVertical(lipgloss.Left, rightSections...))
-
-	// Combine panes horizontally with divider
-	mainContent := lipgloss.JoinHorizontal(
-		lipgloss.Top,
-		leftPane,
-		divider,
-		rightPane,
-	)
-
-	// Footer (full width)
-	footer := m.renderFooter()
-
-	return lipgloss.JoinVertical(lipgloss.Left, mainContent, "", footer)
+	return lipgloss.JoinVertical(lipgloss.Left, sections...)
 }
 
 func (m CommitViewModel) renderConfirmationModal() string {
@@ -677,6 +711,22 @@ func (m CommitViewModel) renderRepoInfo() string {
 	return strings.Join(lines, "\n")
 }
 
+func (m CommitViewModel) renderRepoInfoCompact() string {
+	styles := GetGlobalThemeManager().GetStyles()
+	
+	// Single line: Path | Branch | Changes
+	path := styles.RepoValue.Render(m.repo.Path())
+	branch := styles.RepoValue.Render(m.repo.CurrentBranch())
+	changes := styles.RepoValue.Render(m.repo.ChangeSummary())
+	
+	labelStyle := styles.RepoLabel
+	
+	return fmt.Sprintf("%s %s  %s %s  %s %s", 
+		labelStyle.Render("Path:"), path,
+		labelStyle.Render("Branch:"), branch,
+		labelStyle.Render("Changes:"), changes)
+}
+
 func (m CommitViewModel) renderCommitMessage() string {
 	styles := GetGlobalThemeManager().GetStyles()
 	var content string
@@ -715,110 +765,34 @@ func (m CommitViewModel) renderCommitMessage() string {
 	return title + "\n" + box
 }
 
-// renderOptionsContent returns just the options text for viewport (no title)
+func (m CommitViewModel) renderCommitMessageCompact() string {
+	styles := GetGlobalThemeManager().GetStyles()
+	var content string
+
+	if m.customMessage != "" {
+		content = m.customMessage
+	} else if m.decision.SuggestedMessage() != nil {
+		content = m.decision.SuggestedMessage().Title()
+	} else {
+		content = "No message generated"
+	}
+
+	// Just the box, no title, no reasoning (unless critical)
+	// Calculate available width
+	cardWidth := m.windowWidth - 4
+	if cardWidth < 80 { cardWidth = 80 }
+	boxWidth := cardWidth - 8 // padding
+
+	wrappedContent := wrapText(content, boxWidth)
+	return styles.CommitBox.Render(wrappedContent)
+}
+
+// renderOptionsContent returns just the options text for viewport
 func (m CommitViewModel) renderOptionsContent() string {
-	var lines []string
-
-	for i, option := range m.options {
-		optionStr := m.renderOption(i, option)
-		lines = append(lines, optionStr)
-		if i < len(m.options)-1 {
-			lines = append(lines, "") // Space between options
-		}
-	}
-
-	return strings.Join(lines, "\n")
+	return m.renderOptionList(m.viewport.Width)
 }
 
-func (m CommitViewModel) renderOptions() string {
-	styles := GetGlobalThemeManager().GetStyles()
-	var lines []string
 
-	title := styles.SectionTitle.Render("Actions")
-	lines = append(lines, title)
-	lines = append(lines, "") // Empty line
-
-	for i, option := range m.options {
-		optionStr := m.renderOption(i, option)
-		lines = append(lines, optionStr)
-		lines = append(lines, "") // Space between options
-	}
-
-	return strings.Join(lines, "\n")
-}
-
-func (m CommitViewModel) renderOption(index int, option CommitOption) string {
-	styles := GetGlobalThemeManager().GetStyles()
-	isSelected := index == m.selectedIndex
-
-	// Build option content
-	var content []string
-
-	// Label with number
-	number := fmt.Sprintf("%d.", index+1)
-	label := fmt.Sprintf("%s %s", number, option.Label)
-	if isSelected {
-		content = append(content, styles.OptionLabel.Render(label))
-	} else {
-		content = append(content, styles.OptionNormal.Render(label))
-	}
-
-	// Confidence badge on same line
-	badge := getConfidenceBadge(option.Confidence)
-	content[0] = content[0] + " " + badge
-
-	// Calculate right pane width once
-	totalMargins := 4
-	dividerWidth := 1
-	usableWidth := m.windowWidth - totalMargins - dividerWidth
-	rightPaneWidth := usableWidth - int(float64(usableWidth)*0.48)
-	if rightPaneWidth < 50 {
-		rightPaneWidth = 50
-	}
-
-	// Calculate interior width for content (inside the box borders and padding)
-	// Box has: rounded border (2 chars each side) + padding (1 each side) = 6 total
-	interiorWidth := rightPaneWidth - 6
-	if interiorWidth < 40 {
-		interiorWidth = 40
-	}
-
-	// Calculate max width for text wrapping
-	// Account for OptionDesc paddingLeft (2 chars)
-	maxWidth := interiorWidth - 2
-	if maxWidth < 30 {
-		maxWidth = 30
-	}
-
-	// Description (wrapped to fit within the box)
-	if option.Description != "" {
-		wrapped := wrapText(option.Description, maxWidth)
-		desc := styles.OptionDesc.Render(wrapped)
-		content = append(content, desc)
-	}
-
-	// Join content
-	optionContent := strings.Join(content, "\n")
-
-	// Use Place to force content to fill the full interior width
-	placedContent := lipgloss.Place(
-		interiorWidth,
-		lipgloss.Height(optionContent),
-		lipgloss.Left,
-		lipgloss.Top,
-		optionContent,
-	)
-
-	// Wrap in box style
-	var boxStyle lipgloss.Style
-	if isSelected {
-		boxStyle = styles.SelectedOptionBox
-	} else {
-		boxStyle = styles.NormalOptionBox
-	}
-
-	return boxStyle.Render(placedContent)
-}
 
 func (m CommitViewModel) renderFooter() string {
 	styles := GetGlobalThemeManager().GetStyles()

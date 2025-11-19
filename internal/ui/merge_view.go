@@ -125,23 +125,30 @@ func (m MergeViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.windowHeight = msg.Height
 
 		// Update viewport size on window resize
-		// Match the pane width calculation (48/52 split)
-		totalMargins := 4
-		dividerWidth := 1
-		usableWidth := msg.Width - totalMargins - dividerWidth
-		leftWidth := int(float64(usableWidth) * 0.48)
-		rightWidth := usableWidth - leftWidth
-
-		// Viewport should be nearly as wide as the right pane to allow content to expand
-		// Just subtract small margin for title/padding
-		viewportWidth := rightWidth - 2
-		viewportHeight := msg.Height - 15 // Account for header, footer, etc.
+		// Use full width for vertical layout
+		cardWidth := msg.Width - 4
+		if cardWidth < 80 {
+			cardWidth = 80
+		}
+		innerWidth := cardWidth - 4
+		
+		viewportWidth := innerWidth - 2 // Account for padding
+		
+		// Calculate available height for viewport
+		// Fixed elements approx height:
+		// Header: 1
+		// Merge Info: 2
+		// Commits: 3 (if limited)
+		// Message: 3
+		// Strategies Title: 2
+		// Footer: 2
+		// Padding: 4
+		// Total: ~17 lines
+		viewportHeight := msg.Height - 17
 		if viewportHeight < 5 {
 			viewportHeight = 5
 		}
-		if viewportWidth < 30 {
-			viewportWidth = 30
-		}
+		
 		m.viewport.Width = viewportWidth
 		m.viewport.Height = viewportHeight
 
@@ -260,7 +267,7 @@ func (m MergeViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// View renders the UI with two-pane layout.
+// View renders the UI with a master-detail layout.
 func (m MergeViewModel) View() string {
 	styles := GetGlobalThemeManager().GetStyles()
 	if m.err != nil {
@@ -276,505 +283,248 @@ func (m MergeViewModel) View() string {
 			Render("Initializing merge view...")
 	}
 
-	// Render confirmation modal if in confirm state
 	if m.state == ViewStateConfirm {
 		return m.renderConfirmationModal()
 	}
 
-	// Calculate pane widths with divider space
-	// Use almost all available width, leaving small margins
-	// Left pane: 45%, Right pane: 55% (right needs more for descriptions)
-	totalMargins := 4 // Small margins on edges
-	dividerWidth := 1
-	usableWidth := m.windowWidth - totalMargins - dividerWidth
-
-	leftWidth := int(float64(usableWidth) * 0.48)
-	rightWidth := usableWidth - leftWidth
-
-	// Ensure minimum widths
-	if leftWidth < 50 {
-		leftWidth = 50
-	}
-	if rightWidth < 50 {
-		rightWidth = 50
+	// Layout Dimensions
+	headerHeight := 8 // Logo (6) + Info (1) + Padding (1)
+	footerHeight := 2
+	contentHeight := m.windowHeight - headerHeight - footerHeight
+	if contentHeight < 10 {
+		contentHeight = 10
 	}
 
-	// LEFT PANE: ASCII art, merge info, commits, merge message
-	var leftSections []string
+	// 1. Header Section (Logo + Merge Info)
+	logo := m.renderLogo()
+	mergeInfo := m.renderMergeInfoCompact()
+	header := lipgloss.JoinVertical(lipgloss.Left, logo, mergeInfo)
 
-	// ASCII art header for MERGE
-	logoStyle := lipgloss.NewStyle().
+	// 2. Main Content (Split View)
+	// Left: Strategies Menu (35%)
+	// Right: Details & Context (65%)
+	
+	totalWidth := m.windowWidth - 4
+	leftWidth := int(float64(totalWidth) * 0.35)
+	rightWidth := totalWidth - leftWidth - 3
+
+	if leftWidth < 25 { leftWidth = 25 }
+	if rightWidth < 40 { rightWidth = 40 }
+
+	// Left Pane: Strategies List
+	m.viewport.Width = leftWidth
+	m.viewport.Height = contentHeight
+	m.viewport.SetContent(m.renderStrategyList(leftWidth))
+	
+	leftPane := lipgloss.NewStyle().
+		Width(leftWidth).
+		Height(contentHeight).
+		Render(m.viewport.View())
+
+	// Right Pane: Details
+	rightPane := m.renderDetailsPane(rightWidth, contentHeight)
+
+	// Divider
+	divider := lipgloss.NewStyle().
+		Foreground(styles.ColorBorder).
+		Height(contentHeight).
+		Render(" │ ")
+
+	mainContent := lipgloss.JoinHorizontal(lipgloss.Top,
+		leftPane,
+		divider,
+		rightPane,
+	)
+
+	// Footer
+	footer := m.renderFooter()
+
+	return lipgloss.JoinVertical(lipgloss.Left,
+		header,
+		"", // Spacer
+		mainContent,
+		footer,
+	)
+}
+
+func (m MergeViewModel) renderLogo() string {
+	styles := GetGlobalThemeManager().GetStyles()
+	return lipgloss.NewStyle().
 		Foreground(styles.ColorPrimary).
-		Bold(true)
-
-	logo := logoStyle.Render(
+		Bold(true).
+		Render(
 		`  ███╗   ███╗███████╗██████╗  ██████╗ ███████╗
   ████╗ ████║██╔════╝██╔══██╗██╔════╝ ██╔════╝
   ██╔████╔██║█████╗  ██████╔╝██║  ███╗█████╗
   ██║╚██╔╝██║██╔══╝  ██╔══██╗██║   ██║██╔══╝
   ██║ ╚═╝ ██║███████╗██║  ██║╚██████╔╝███████╗
   ╚═╝     ╚═╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝`)
+}
 
-	leftSections = append(leftSections, logo)
-	leftSections = append(leftSections, "")
+func (m MergeViewModel) renderStrategyList(width int) string {
+	styles := GetGlobalThemeManager().GetStyles()
+	var lines []string
 
-	mergeInfo := m.renderMergeInfo()
-	leftSections = append(leftSections, mergeInfo)
+	lines = append(lines, styles.SectionTitle.Render("STRATEGIES"))
+	lines = append(lines, "")
 
-	// Conflict warning
+	for i, strategy := range m.strategies {
+		isSelected := i == m.selectedIndex
+		
+		label := fmt.Sprintf("%d. %s", i+1, strategy.Label)
+		
+		var style lipgloss.Style
+		if isSelected {
+			style = styles.TabActive.Copy().Width(width).Padding(0, 1)
+			label = "> " + label
+		} else {
+			style = styles.TabInactive.Copy().Width(width).Padding(0, 1)
+			label = "  " + label
+		}
+		
+		lines = append(lines, style.Render(label))
+		lines = append(lines, "") // Spacing
+	}
+	
+	return strings.Join(lines, "\n")
+}
+
+func (m MergeViewModel) renderDetailsPane(width, height int) string {
+	styles := GetGlobalThemeManager().GetStyles()
+	selectedStrategy := m.strategies[m.selectedIndex]
+	
+	var sections []string
+	
+	// 1. Description
+	title := styles.SectionTitle.Render("DETAILS")
+	sections = append(sections, title)
+	
+	desc := wrapTextMerge(selectedStrategy.Description, width)
+	sections = append(sections, styles.Description.Render(desc))
+	
+	if selectedStrategy.Recommended {
+		rec := lipgloss.NewStyle().Foreground(styles.ColorSuccess).Bold(true).Render("✓ Recommended by AI")
+		sections = append(sections, rec)
+	}
+	
+	sections = append(sections, "")
+	sections = append(sections, styles.SectionTitle.Render("CONTEXT"))
+	
+	// 2. Conflicts (if any)
 	if !m.analysis.CanMerge {
-		warning := styles.Warning.Render("✗") + " " +
-			lipgloss.NewStyle().Foreground(styles.ColorError).Render(
-				"Conflicts detected")
-		leftSections = append(leftSections, warning)
-
-		// Show conflicts
-		conflictList := m.renderConflicts()
-		leftSections = append(leftSections, conflictList)
+		warn := styles.Warning.Render("Conflicts Detected:")
+		sections = append(sections, warn)
+		for i, c := range m.analysis.Conflicts {
+			if i >= 3 { break }
+			sections = append(sections, lipgloss.NewStyle().Foreground(styles.ColorError).Render("- "+c))
+		}
+	} else {
+		ok := lipgloss.NewStyle().Foreground(styles.ColorSuccess).Render("✓ No conflicts")
+		sections = append(sections, ok)
+	}
+	
+	sections = append(sections, "")
+	
+	// 3. Merge Message Preview
+	if m.analysis.MergeMessage != nil {
+		msgBox := styles.CommitBox.Copy().Width(width).Render(
+			wrapTextMerge(m.analysis.MergeMessage.FullMessage(), width-4))
+		sections = append(sections, msgBox)
 	}
 
-	leftSections = append(leftSections, "")
+	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+}
 
-	// Commits to merge
-	commitsSection := m.renderCommits()
-	leftSections = append(leftSections, commitsSection)
-
-	leftSections = append(leftSections, "")
-
-	// Merge message box
-	messageBox := m.renderMergeMessage()
-	leftSections = append(leftSections, messageBox)
-
-	leftPane := lipgloss.NewStyle().
-		Width(leftWidth).
-		MaxWidth(leftWidth).
-		Render(lipgloss.JoinVertical(lipgloss.Left, leftSections...))
-
-	// DIVIDER: Vertical line separator
-	dividerHeight := m.windowHeight - 5 // Account for footer
-	if dividerHeight < 5 {
-		dividerHeight = 5
-	}
-	dividerLines := make([]string, dividerHeight)
-	dividerChar := lipgloss.NewStyle().
-		Foreground(styles.ColorBorder).
-		Render("│")
-	for i := range dividerLines {
-		dividerLines[i] = dividerChar
-	}
-	divider := strings.Join(dividerLines, "\n")
-
-	// RIGHT PANE: Strategy selection with viewport
-	var rightSections []string
-
-	strategiesTitle := styles.SectionTitle.Render("Select merge strategy:")
-	rightSections = append(rightSections, strategiesTitle)
-	rightSections = append(rightSections, "")
-
-	// Viewport with scrollable strategies
-	viewportContent := m.viewport.View()
-	rightSections = append(rightSections, viewportContent)
-
-	// AI reasoning (if available)
-	if m.analysis.Reasoning != "" {
-		rightSections = append(rightSections, "")
-		reasoning := m.renderReasoning()
-		rightSections = append(rightSections, reasoning)
-	}
-
-	// Scroll indicator
-	if m.viewport.TotalLineCount() > m.viewport.Height {
-		scrollIndicator := lipgloss.NewStyle().
-			Foreground(styles.ColorMuted).
-			Render(fmt.Sprintf("(%d%% scrolled)", int(m.viewport.ScrollPercent()*100)))
-		rightSections = append(rightSections, "")
-		rightSections = append(rightSections, scrollIndicator)
-	}
-
-	rightPane := lipgloss.NewStyle().
-		Width(rightWidth).
-		MaxWidth(rightWidth).
-		Render(lipgloss.JoinVertical(lipgloss.Left, rightSections...))
-
-	// Combine panes horizontally with divider
-	mainContent := lipgloss.JoinHorizontal(
-		lipgloss.Top,
-		leftPane,
-		divider,
-		rightPane,
-	)
-
-	// Footer (full width)
-	footer := m.renderFooter()
-
-	return lipgloss.JoinVertical(lipgloss.Left, mainContent, "", footer)
+func (m MergeViewModel) renderStrategiesContent() string {
+	return m.renderStrategyList(m.viewport.Width)
 }
 
 func (m MergeViewModel) renderConfirmationModal() string {
 	styles := GetGlobalThemeManager().GetStyles()
-	selectedStrategy := m.strategies[m.selectedIndex]
-
+	
+	// Calculate dimensions
+	width := 60
+	height := 12
+	
 	// Title
-	title := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(styles.ColorText).
-		Render("Confirm Merge")
-
-	// Action description
-	actionDesc := lipgloss.NewStyle().
-		Foreground(styles.ColorPrimary).
-		Bold(true).
-		Render(selectedStrategy.Label)
-
+	title := styles.SectionTitle.Render("CONFIRM MERGE")
+	
 	// Message Input
-	msgLabel := styles.FormLabel.Render("Merge Message:")
-	msgInput := m.msgInput.View()
+	inputStyle := styles.FormInput.Copy().Width(width - 4)
 	if m.confirmationFocus == 0 {
-		msgInput = styles.FormInputFocused.Render(m.msgInput.View())
-	} else {
-		msgInput = styles.FormInput.Render(m.msgInput.View())
+		inputStyle = styles.FormInputFocused.Copy().Width(width - 4)
 	}
-
+	inputView := inputStyle.Render(m.msgInput.View())
+	
 	// Buttons
-	buttonStyle := lipgloss.NewStyle().
-		Padding(0, 3).
-		MarginRight(2).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(styles.ColorMuted)
-
-	buttonActiveStyle := lipgloss.NewStyle().
-		Padding(0, 3).
-		MarginRight(2).
-		Bold(true).
-		Background(styles.ColorPrimary).
-		Foreground(lipgloss.Color("#000000")).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(styles.ColorPrimary)
-
-	// Render buttons
-	confirmBtn := "Confirm"
-	cancelBtn := "Cancel"
-
+	btnStyle := styles.TabInactive.Copy().Padding(0, 2)
+	activeBtnStyle := styles.TabActive.Copy().Padding(0, 2)
+	
+	confirmBtn := btnStyle.Render("Confirm")
 	if m.confirmationFocus == 1 {
-		confirmBtn = buttonActiveStyle.Render(confirmBtn)
-		cancelBtn = buttonStyle.Render(cancelBtn)
-	} else if m.confirmationFocus == 2 {
-		confirmBtn = buttonStyle.Render(confirmBtn)
-		cancelBtn = buttonActiveStyle.Render(cancelBtn)
-	} else {
-		confirmBtn = buttonStyle.Render(confirmBtn)
-		cancelBtn = buttonStyle.Render(cancelBtn)
+		confirmBtn = activeBtnStyle.Render("Confirm")
 	}
-
-	buttons := lipgloss.JoinHorizontal(lipgloss.Left, confirmBtn, cancelBtn)
-
-	// Help text
-	helpText := lipgloss.NewStyle().
-		Foreground(styles.ColorMuted).
-		Render("Tab to navigate  •  Enter to confirm/next  •  Esc to cancel")
-
-	// Combine all elements
-	content := lipgloss.JoinVertical(
-		lipgloss.Left,
+	
+	cancelBtn := btnStyle.Render("Cancel")
+	if m.confirmationFocus == 2 {
+		cancelBtn = activeBtnStyle.Render("Cancel")
+	}
+	
+	buttons := lipgloss.JoinHorizontal(lipgloss.Center, confirmBtn, "  ", cancelBtn)
+	
+	// Content
+	content := lipgloss.JoinVertical(lipgloss.Center,
 		title,
 		"",
-		actionDesc,
-		"",
-		msgLabel,
-		msgInput,
+		"Enter merge message:",
+		inputView,
 		"",
 		buttons,
-		"",
-		helpText,
 	)
-
-	// Create a modal box
-	modalStyle := lipgloss.NewStyle().
-		Padding(2, 4).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(styles.ColorPrimary).
-		Background(lipgloss.Color("#1a1a1a")). // Dark background
-		Width(70)
-
-	return lipgloss.Place(
-		m.windowWidth, m.windowHeight,
+	
+	// Box
+	box := styles.CommitBox.Copy().
+		Width(width).
+		Height(height).
+		Align(lipgloss.Center).
+		Render(content)
+		
+	// Center in window
+	return lipgloss.Place(m.windowWidth, m.windowHeight, 
 		lipgloss.Center, lipgloss.Center,
-		modalStyle.Render(content),
+		box,
 	)
 }
 
-func (m MergeViewModel) renderMergeInfo() string {
+func (m MergeViewModel) renderMergeInfoCompact() string {
 	styles := GetGlobalThemeManager().GetStyles()
-	var lines []string
+	
+	source := m.analysis.SourceBranchInfo.Name()
+	target := m.analysis.TargetBranch
+	
+	branchStyle := lipgloss.NewStyle().Foreground(styles.ColorPrimary)
+	textStyle := lipgloss.NewStyle().Foreground(styles.ColorText)
+	mutedStyle := lipgloss.NewStyle().Foreground(styles.ColorMuted)
 
-	// Source and target branches
-	branchLine := styles.RepoLabel.Render("Merge:") + " " +
-		lipgloss.NewStyle().Foreground(styles.ColorPrimary).Bold(true).Render(m.analysis.SourceBranchInfo.Name()) +
-		lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(" -> ") +
-		lipgloss.NewStyle().Foreground(styles.ColorSuccess).Bold(true).Render(m.analysis.TargetBranch)
-	lines = append(lines, branchLine)
-
-	// Commit count
-	commitCount := styles.RepoLabel.Render("Commits:") + " " +
-		styles.RepoValue.Render(fmt.Sprintf("%d", m.analysis.CommitCount))
-	lines = append(lines, commitCount)
-
-	// Status
-	status := styles.RepoLabel.Render("Status:") + " "
-	if m.analysis.CanMerge {
-		status += lipgloss.NewStyle().Foreground(styles.ColorSuccess).Render("✓ Ready to merge")
-	} else {
-		status += lipgloss.NewStyle().Foreground(styles.ColorError).Render("✗ Conflicts detected")
-	}
-	lines = append(lines, status)
-
-	return strings.Join(lines, "\n")
-}
-
-func (m MergeViewModel) renderConflicts() string {
-	styles := GetGlobalThemeManager().GetStyles()
-	if len(m.analysis.Conflicts) == 0 {
-		return ""
-	}
-
-	var lines []string
-	lines = append(lines, styles.SectionTitle.Render("Conflicts:"))
-
-	for i, conflict := range m.analysis.Conflicts {
-		if i >= 5 { // Limit to 5 conflicts
-			lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(
-				fmt.Sprintf("  ... and %d more", len(m.analysis.Conflicts)-5)))
-			break
-		}
-		lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorError).Render("  ✗ "+conflict))
-	}
-
-	return strings.Join(lines, "\n")
-}
-
-func (m MergeViewModel) renderCommits() string {
-	styles := GetGlobalThemeManager().GetStyles()
-	var lines []string
-	lines = append(lines, styles.SectionTitle.Render("Commits to merge:"))
-
-	maxCommits := len(m.analysis.Commits)
-	if maxCommits > 5 {
-		maxCommits = 5 // Show only first 5 commits
-	}
-
-	for i := 0; i < maxCommits; i++ {
-		commit := m.analysis.Commits[i]
-		commitLine := lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("  - ") +
-			lipgloss.NewStyle().Foreground(styles.ColorPrimary).Render(commit.Hash[:7]) + " " +
-			styles.RepoValue.Render(commit.Message)
-		lines = append(lines, commitLine)
-	}
-
-	if len(m.analysis.Commits) > maxCommits {
-		lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(
-			fmt.Sprintf("  ... and %d more commits", len(m.analysis.Commits)-maxCommits)))
-	}
-
-	return strings.Join(lines, "\n")
-}
-
-func (m MergeViewModel) renderMergeMessage() string {
-	styles := GetGlobalThemeManager().GetStyles()
-	if m.analysis.MergeMessage == nil {
-		return ""
-	}
-
-	var lines []string
-	lines = append(lines, styles.SectionTitle.Render("Merge message:"))
-
-	// Calculate available width for merge message box
-	usableWidth := m.windowWidth - 4 - 1 // margins and divider
-	leftWidth := int(float64(usableWidth) * 0.48)
-	boxWidth := leftWidth - 4 // Account for box padding/borders
-
-	messageContent := m.analysis.MergeMessage.FullMessage()
-	wrappedContent := wrapTextMerge(messageContent, boxWidth)
-	messageBox := styles.CommitBox.Render(wrappedContent)
-	lines = append(lines, messageBox)
-
-	return strings.Join(lines, "\n")
-}
-
-func (m MergeViewModel) renderReasoning() string {
-	styles := GetGlobalThemeManager().GetStyles()
-	if m.analysis.Reasoning == "" {
-		return ""
-	}
-
-	reasoning := styles.Description.Render("INFO: " + m.analysis.Reasoning)
-	return reasoning
-}
-
-// renderStrategiesContent returns just the strategies text for viewport (no title)
-func (m MergeViewModel) renderStrategiesContent() string {
-	var lines []string
-
-	for i, strategy := range m.strategies {
-		strategyStr := m.renderStrategy(i, strategy)
-		lines = append(lines, strategyStr)
-		if i < len(m.strategies)-1 {
-			lines = append(lines, "") // Space between strategies
-		}
-	}
-
-	return strings.Join(lines, "\n")
-}
-
-func (m MergeViewModel) renderStrategy(index int, strategy MergeStrategy) string {
-	styles := GetGlobalThemeManager().GetStyles()
-	isSelected := index == m.selectedIndex
-
-	// Build strategy content
-	var content []string
-
-	// Label with number
-	number := fmt.Sprintf("%d.", index+1)
-	label := fmt.Sprintf("%s %s", number, strategy.Label)
-	if isSelected {
-		content = append(content, styles.OptionLabel.Render(label))
-	} else {
-		content = append(content, styles.OptionNormal.Render(label))
-	}
-
-	// Recommended badge
-	if strategy.Recommended {
-		badge := lipgloss.NewStyle().
-			Foreground(styles.ColorSuccess).
-			Bold(true).
-			Render("✓ RECOMMENDED")
-		content[0] = content[0] + " " + badge
-	}
-
-	// Calculate right pane width once
-	totalMargins := 4
-	dividerWidth := 1
-	usableWidth := m.windowWidth - totalMargins - dividerWidth
-	rightPaneWidth := usableWidth - int(float64(usableWidth)*0.48)
-	if rightPaneWidth < 50 {
-		rightPaneWidth = 50
-	}
-
-	// Calculate interior width for content (inside the box borders and padding)
-	// Box has: rounded border (2 chars each side) + padding (1 each side) = 6 total
-	interiorWidth := rightPaneWidth - 6
-	if interiorWidth < 40 {
-		interiorWidth = 40
-	}
-
-	// Calculate max width for text wrapping
-	// Account for OptionDesc paddingLeft (2 chars)
-	maxWidth := interiorWidth - 2
-	if maxWidth < 30 {
-		maxWidth = 30
-	}
-
-	// Description (wrapped to fit within the box)
-	if strategy.Description != "" {
-		wrapped := wrapTextMerge(strategy.Description, maxWidth)
-		desc := styles.OptionDesc.Render(wrapped)
-		content = append(content, desc)
-	}
-
-	// Join content
-	strategyContent := strings.Join(content, "\n")
-
-	// Use Place to force content to fill the full interior width
-	placedContent := lipgloss.Place(
-		interiorWidth,
-		lipgloss.Height(strategyContent),
-		lipgloss.Left,
-		lipgloss.Top,
-		strategyContent,
-	)
-
-	// Wrap in box style
-	var boxStyle lipgloss.Style
-	if isSelected {
-		boxStyle = styles.SelectedOptionBox
-	} else {
-		boxStyle = styles.NormalOptionBox
-	}
-
-	return boxStyle.Render(placedContent)
-}
-
-// wrapTextMerge wraps text to the specified width
-func wrapTextMerge(text string, width int) string {
-	if len(text) <= width {
-		return text
-	}
-
-	var lines []string
-	words := strings.Fields(text)
-	currentLine := ""
-
-	for _, word := range words {
-		testLine := currentLine
-		if currentLine != "" {
-			testLine += " " + word
-		} else {
-			testLine = word
-		}
-
-		if len(testLine) <= width {
-			currentLine = testLine
-		} else {
-			if currentLine != "" {
-				lines = append(lines, currentLine)
-			}
-			currentLine = word
-		}
-	}
-
-	if currentLine != "" {
-		lines = append(lines, currentLine)
-	}
-
-	return strings.Join(lines, "\n")
+	return lipgloss.NewStyle().
+		Padding(0, 2).
+		Render(fmt.Sprintf("%s %s %s %s", 
+			branchStyle.Render(source),
+			textStyle.Render("→"),
+			branchStyle.Render(target),
+			mutedStyle.Render(fmt.Sprintf("(%d commits)", len(m.analysis.Commits))),
+		))
 }
 
 func (m MergeViewModel) renderFooter() string {
 	styles := GetGlobalThemeManager().GetStyles()
-	var lines []string
-
-	// Keyboard shortcuts
-	shortcuts := []string{
-		styles.ShortcutKey.Render("↑/↓") + " " + styles.ShortcutDesc.Render("Navigate"),
-		styles.ShortcutKey.Render("Enter") + " " + styles.ShortcutDesc.Render("Confirm"),
-		styles.ShortcutKey.Render("Esc") + " " + styles.ShortcutDesc.Render("Cancel"),
+	
+	help := "↑/↓: Select • Enter: Merge • Esc: Cancel"
+	if m.state == ViewStateConfirm {
+		help = "Tab: Next • Enter: Select • Esc: Back"
 	}
-	shortcutLine := strings.Join(shortcuts, "  ")
-	lines = append(lines, shortcutLine)
-
-	// Metadata
-	metadata := styles.Metadata.Render(fmt.Sprintf("Model: %s  |  Tokens: %d",
-		m.analysis.Model, m.analysis.TokensUsed))
-	lines = append(lines, metadata)
-
-	return styles.Footer.Render(strings.Join(lines, "\n"))
-}
-
-// GetSelectedStrategy returns the selected merge strategy.
-func (m MergeViewModel) GetSelectedStrategy() string {
-	if m.confirmed && m.selectedIndex < len(m.strategies) {
-		return m.strategies[m.selectedIndex].Strategy
-	}
-	return ""
-}
-
-// IsConfirmed returns whether the user confirmed the merge.
-func (m MergeViewModel) IsConfirmed() bool {
-	return m.confirmed
-}
-
-// IsCancelled returns whether the user cancelled.
-func (m MergeViewModel) IsCancelled() bool {
-	return m.returnToDashboard
+	
+	return styles.Footer.Render(help)
 }
 
 // ShouldReturnToDashboard returns true if the view should return to dashboard.
@@ -787,7 +537,22 @@ func (m MergeViewModel) HasDecision() bool {
 	return m.hasDecision
 }
 
-// GetMergeMessage returns the edited merge message.
+// GetSelectedStrategy returns the selected merge strategy.
+func (m MergeViewModel) GetSelectedStrategy() string {
+	if m.selectedIndex >= 0 && m.selectedIndex < len(m.strategies) {
+		return m.strategies[m.selectedIndex].Strategy
+	}
+	return "regular" // Default
+}
+
+// GetMergeMessage returns the merge message.
 func (m MergeViewModel) GetMergeMessage() string {
 	return m.msgInput.Value()
+}
+
+func wrapTextMerge(text string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	return lipgloss.NewStyle().Width(width).Render(text)
 }
