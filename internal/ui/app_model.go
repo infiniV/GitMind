@@ -112,7 +112,7 @@ type AppModel struct {
 
 // NewAppModel creates a new root application model
 func NewAppModel(gitOps git.Operations, aiProvider ai.Provider, cfg *domain.Config, cfgManager *config.Manager, repoPath, version string) AppModel {
-	dashboard := NewDashboardModel(gitOps, repoPath)
+	dashboard := NewDashboardModel(gitOps, repoPath, cfg)
 	dashboard.SetVersion(version)
 	githubOps := GitHubOps{}
 
@@ -599,7 +599,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			// Initialize dashboard
-			dashboard := NewDashboardModel(m.gitOps, m.repoPath)
+			dashboard := NewDashboardModel(m.gitOps, m.repoPath, m.cfg)
 			dashboard.SetVersion(m.version)
 			m.dashboard = &dashboard
 
@@ -763,18 +763,63 @@ func (m AppModel) View() string {
 
 // renderLoadingOverlay renders a loading message overlay
 func (m AppModel) renderLoadingOverlay() string {
+	styles := GetGlobalThemeManager().GetStyles()
+	
+	// Title
+	title := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(styles.ColorPrimary).
+		Render("AI ANALYSIS")
+
+	// Operation type
+	operation := "Analyzing Changes"
+	if m.state == StateMergeAnalyzing {
+		operation = "Analyzing Merge"
+	} else if m.state == StateCommitExecuting {
+		operation = "Executing Commit"
+	} else if m.state == StateMergeExecuting {
+		operation = "Executing Merge"
+	}
+
+	opText := lipgloss.NewStyle().
+		Foreground(styles.ColorSecondary).
+		Bold(true).
+		Render(operation)
+
+	// Loading animation
 	dots := ""
 	for i := 0; i < m.loadingDots; i++ {
 		dots += "."
 	}
-
-	styles := GetGlobalThemeManager().GetStyles()
+	// Pad dots to avoid layout jumping
+	dots = fmt.Sprintf("%-3s", dots)
+	
 	loadingText := styles.Loading.Render(m.loadingMessage + dots)
 
-	// Create a centered box
-	box := styles.CommitBox.Render(loadingText)
+	// Content
+	content := lipgloss.JoinVertical(
+		lipgloss.Center,
+		title,
+		"",
+		opText,
+		"",
+		loadingText,
+		"",
+		lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("Please wait while we process your request..."),
+	)
 
-	return "\n\n" + box
+	// Create a centered box
+	box := styles.CommitBox.
+		Padding(2, 4).
+		Width(60).
+		Align(lipgloss.Center).
+		Render(content)
+
+	return "\n\n" + lipgloss.Place(
+		m.windowWidth, m.windowHeight-4, // Adjust for margins
+		lipgloss.Center, lipgloss.Center,
+		box,
+	)
 }
 
 // renderConfirmationDialog renders a full-screen confirmation dialog with buttons
@@ -980,19 +1025,25 @@ func (m AppModel) startMergeAnalysis(params map[string]interface{}) tea.Cmd {
 }
 
 // executeCommit executes the selected commit action
-func (m AppModel) executeCommit(option *domain.Alternative) tea.Cmd {
+func (m AppModel) executeCommit(option *CommitOption) tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
 
 		// Create execute use case
 		executeUC := usecase.NewExecuteCommitUseCase(m.gitOps)
 
+		// Use the message from the option if available, otherwise fallback to decision
+		msg := option.Message
+		if msg == nil {
+			msg = m.commitAnalysisResult.Decision.SuggestedMessage()
+		}
+
 		// Build request
 		req := usecase.ExecuteCommitRequest{
 			RepoPath:      m.repoPath,
 			Decision:      m.commitAnalysisResult.Decision,
 			Action:        option.Action,
-			CommitMessage: m.commitAnalysisResult.Decision.SuggestedMessage(),
+			CommitMessage: msg,
 			BranchName:    option.BranchName,
 			StageAll:      true,
 		}

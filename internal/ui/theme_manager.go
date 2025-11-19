@@ -229,18 +229,26 @@ func (tm *ThemeManager) regenerateStyles() {
 	tm.styles.DashboardCard = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorBorder).
-		Padding(1).
-		Width(38)
+		Padding(1, 2).
+		Width(38).
+		Height(10)
 
 	tm.styles.DashboardCardActive = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
+		Border(lipgloss.ThickBorder()).
 		BorderForeground(colorSelected).
-		Padding(1).
-		Width(38)
+		Padding(1, 2).
+		Width(38).
+		Height(10)
 
 	tm.styles.CardTitle = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(colorPrimary)
+		Foreground(colorPrimary).
+		BorderBottom(true).
+		BorderForeground(colorBorder).
+		PaddingBottom(1).
+		MarginBottom(1).
+		Width(34).
+		Align(lipgloss.Center)
 
 	// Status indicator styles
 	tm.styles.StatusOk = lipgloss.NewStyle().

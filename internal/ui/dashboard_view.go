@@ -47,6 +47,7 @@ const (
 type DashboardModel struct {
 	gitOps        git.Operations
 	repoPath      string
+	config        *domain.Config
 	repo          *domain.Repository
 	branchInfo    *domain.BranchInfo
 	branches      []string
@@ -56,7 +57,6 @@ type DashboardModel struct {
 	submenuIndex  int
 
 	// Submenu options
-	useConventional bool
 	customMessage   string
 	sourceBranch    string
 	targetBranch    string
@@ -85,15 +85,16 @@ type commitsMsg []git.CommitInfo
 type errorMsg struct{ err error }
 
 // NewDashboardModel creates a new dashboard model
-func NewDashboardModel(gitOps git.Operations, repoPath string) DashboardModel {
+func NewDashboardModel(gitOps git.Operations, repoPath string, config *domain.Config) DashboardModel {
 	return DashboardModel{
-		gitOps:        gitOps,
-		repoPath:      repoPath,
-		selectedCard:  0,
-		activeSubmenu: NoSubmenu,
-		loading:       true,
-		actionParams:  make(map[string]interface{}),
-		version:       "0.1.0", // Default version
+		gitOps:          gitOps,
+		repoPath:        repoPath,
+		config:          config,
+		selectedCard:    0,
+		activeSubmenu:   NoSubmenu,
+		loading:         true,
+		actionParams:    make(map[string]interface{}),
+		version:         "0.1.0", // Default version
 	}
 }
 
@@ -254,22 +255,17 @@ func (m DashboardModel) handleCardActivation() (tea.Model, tea.Cmd) {
 func (m DashboardModel) handleSubmenuSelection() (tea.Model, tea.Cmd) {
 	switch m.activeSubmenu {
 	case CommitOptionsMenu:
-		switch m.submenuIndex {
-		case 0:
-			// Toggle conventional commits
-			m.useConventional = !m.useConventional
-		case 2:
+		if m.submenuIndex == 0 {
 			// Execute commit
 			m.action = ActionCommit
-			m.actionParams["conventional"] = m.useConventional
-			m.actionParams["message"] = m.customMessage
+			m.actionParams["conventional"] = m.config.Commits.Convention == "conventional"
 			m.activeSubmenu = NoSubmenu
 			m.submenuIndex = 0
 			return m, nil
 		}
 
 	case MergeOptionsMenu:
-		if m.submenuIndex == 2 {
+		if m.submenuIndex == 0 {
 			// Execute merge
 			m.action = ActionMerge
 			m.actionParams["source"] = m.sourceBranch
@@ -369,9 +365,9 @@ func (m DashboardModel) handleSubmenuSelection() (tea.Model, tea.Cmd) {
 func (m DashboardModel) getSubmenuMaxIndex() int {
 	switch m.activeSubmenu {
 	case CommitOptionsMenu:
-		return 2 // 3 options: conventional, message, execute
+		return 0 // 1 option: execute
 	case MergeOptionsMenu:
-		return 2 // 3 options: source, target, execute
+		return 0 // 1 option: execute
 	case CommitListMenu:
 		return len(m.recentCommits) - 1
 	case BranchListMenu:
@@ -410,11 +406,11 @@ func (m *DashboardModel) checkLoading() {
 	}
 }
 
-// renderHeader renders the ASCII art header with version and repo info
+// renderHeader renders the header with ASCII art logo and repo info
 func (m DashboardModel) renderHeader() string {
 	styles := GetGlobalThemeManager().GetStyles()
 
-	// Compact ASCII art logo for "GM"
+	// ASCII art logo for "GM"
 	logoStyle := lipgloss.NewStyle().
 		Foreground(styles.ColorPrimary).
 		Bold(true)
@@ -441,13 +437,13 @@ func (m DashboardModel) renderHeader() string {
 	infoLines = append(infoLines, versionLine)
 
 	// Line 2: Repository path
-	repoName := m.repoPath
-	if len(repoName) > 60 {
-		repoName = "..." + repoName[len(repoName)-57:]
+	repoPath := m.repoPath
+	if len(repoPath) > 60 {
+		repoPath = "..." + repoPath[len(repoPath)-57:]
 	}
 	repoLine := lipgloss.NewStyle().
-		Foreground(styles.ColorMuted).
-		Render(repoName)
+		Foreground(styles.ColorText).
+		Render(repoPath)
 	infoLines = append(infoLines, repoLine)
 
 	// Line 3: Branch and status
@@ -458,19 +454,18 @@ func (m DashboardModel) renderHeader() string {
 		}
 
 		statusText := ""
+		statusColor := styles.ColorSuccess
 		if m.repo.HasChanges() {
-			statusText = styles.StatusWarning.Render("Modified")
+			statusText = "Modified"
+			statusColor = styles.ColorWarning
 		} else {
-			statusText = styles.StatusOk.Render("Clean")
+			statusText = "Clean"
 		}
 
-		branchLine := lipgloss.NewStyle().
-			Foreground(styles.ColorPrimary).
-			Render(branchName) + " " +
-			lipgloss.NewStyle().
-				Foreground(styles.ColorMuted).
-				Render("•") + " " +
-			statusText
+		branchLine := fmt.Sprintf("%s %s %s",
+			lipgloss.NewStyle().Foreground(styles.ColorSecondary).Render(" "+branchName),
+			lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("•"),
+			lipgloss.NewStyle().Foreground(statusColor).Render(statusText))
 
 		infoLines = append(infoLines, branchLine)
 	} else {
@@ -479,15 +474,43 @@ func (m DashboardModel) renderHeader() string {
 
 	// Combine logo and info sections
 	infoSection := strings.Join(infoLines, "\n")
+	
+	// Center the info section vertically relative to the logo (6 lines)
+	// Info has 3 lines, so add padding
+	infoBlock := lipgloss.NewStyle().
+		PaddingLeft(4).
+		PaddingTop(1).
+		Render(infoSection)
 
 	header := lipgloss.JoinHorizontal(
 		lipgloss.Top,
 		logo,
-		"   ",
-		lipgloss.NewStyle().PaddingTop(0).Render(infoSection),
+		infoBlock,
 	)
 
 	return header
+}
+
+// relativeTime returns a human-readable relative time string
+func relativeTime(tStr string) string {
+	t, err := time.Parse(time.RFC3339, tStr)
+	if err != nil {
+		return tStr
+	}
+	
+	diff := time.Since(t)
+	
+	if diff < time.Minute {
+		return "just now"
+	} else if diff < time.Hour {
+		return fmt.Sprintf("%dm ago", int(diff.Minutes()))
+	} else if diff < 24*time.Hour {
+		return fmt.Sprintf("%dh ago", int(diff.Hours()))
+	} else if diff < 48*time.Hour {
+		return "yesterday"
+	} else {
+		return fmt.Sprintf("%dd ago", int(diff.Hours()/24))
+	}
 }
 
 // View renders the dashboard
@@ -559,177 +582,137 @@ func (m DashboardModel) renderCard(index int, title, content string) string {
 		style = styles.DashboardCardActive
 	}
 
-	// Title at top (no enter symbol)
+	// Title at top
 	titleLine := styles.CardTitle.Render(title)
 
-	// Content with muted style
+	// Content
+	// We don't need to force height here as the style handles it, 
+	// but we should ensure content doesn't overflow or look empty.
 	contentStyle := lipgloss.NewStyle().Foreground(styles.ColorMuted)
 	contentStr := contentStyle.Render(content)
 
-	// Build fixed-size interior: title at top, content at bottom with spacing
-	// Use Place to enforce exact dimensions: 36 width x 8 height
-	titleBlock := lipgloss.Place(36, 1, lipgloss.Left, lipgloss.Top, titleLine)
-	contentBlock := lipgloss.Place(36, 4, lipgloss.Left, lipgloss.Bottom, contentStr)
-
-	// Join with 3 blank lines in between to total 8 lines
-	spacer := strings.Repeat("\n", 2)
-	interior := titleBlock + spacer + contentBlock
-
-	return style.Render(interior)
+	return style.Render(lipgloss.JoinVertical(lipgloss.Left, titleLine, contentStr))
 }
 
 // renderRepoStatusCard renders repository status content
 func (m DashboardModel) renderRepoStatusCard() string {
+	if m.repo == nil {
+		return "Loading..."
+	}
+
+	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
 
-	if m.repo == nil {
-		lines = append(lines, "Loading...")
-		lines = append(lines, "")
-		lines = append(lines, "")
-		lines = append(lines, "")
-		return strings.Join(lines, "\n")
-	}
-
-	// Line 1: Branch name (shortened if too long)
+	// Branch
 	branch := m.repo.CurrentBranch()
-	if len(branch) > 28 {
-		branch = branch[:25] + "..."
+	if len(branch) > 25 {
+		branch = branch[:22] + "..."
 	}
-	lines = append(lines, branch)
+	lines = append(lines, fmt.Sprintf("%s %s", 
+		lipgloss.NewStyle().Foreground(styles.ColorSecondary).Render(""), 
+		lipgloss.NewStyle().Foreground(styles.ColorText).Bold(true).Render(branch)))
 
-	// Line 2: Clean or file count
-	styles := GetGlobalThemeManager().GetStyles()
+	// Changes
 	if m.repo.HasChanges() {
-		fileCount := m.repo.TotalChanges()
-		statusText := fmt.Sprintf("%d file(s) changed", fileCount)
-		lines = append(lines, styles.StatusWarning.Render(statusText))
+		stats := fmt.Sprintf("+%d -%d", m.repo.TotalAdditions(), m.repo.TotalDeletions())
+		lines = append(lines, fmt.Sprintf("%s %s", 
+			styles.StatusWarning.Render("●"), 
+			fmt.Sprintf("%d files changed (%s)", m.repo.TotalChanges(), stats)))
 	} else {
-		lines = append(lines, styles.StatusOk.Render("Clean"))
+		lines = append(lines, fmt.Sprintf("%s %s", 
+			styles.StatusOk.Render("✓"), 
+			"Working directory clean"))
 	}
 
-	// Line 3: +additions -deletions (only if has changes)
-	if m.repo.HasChanges() {
-		additions := m.repo.TotalAdditions()
-		deletions := m.repo.TotalDeletions()
-		diffText := fmt.Sprintf("+%d -%d", additions, deletions)
-		lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(diffText))
-	} else {
-		lines = append(lines, "")
-	}
-
-	// Line 4: Remote sync status
+	// Remote
 	if m.repo.HasRemote() {
 		syncStatus := m.repo.SyncStatusSummary()
-
-		// Add remote type indicator
-		var remoteIndicator string
+		icon := "☁"
 		if m.repo.IsGitHubRemote() {
-			remoteIndicator = styles.StatusInfo.Render("→ GitHub")
-		} else {
-			remoteIndicator = lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("→ Remote")
+			icon = ""
 		}
-
-		// Colorize sync status
-		var syncStatusStyled string
+		
+		statusColor := styles.ColorMuted
 		if syncStatus == "synced" {
-			syncStatusStyled = styles.StatusOk.Render("synced")
-		} else if syncStatus == "no remote" {
-			syncStatusStyled = lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("-")
-		} else {
-			// Has ahead/behind indicators
-			syncStatusStyled = lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(syncStatus)
+			statusColor = styles.ColorSuccess
+		} else if strings.Contains(syncStatus, "ahead") || strings.Contains(syncStatus, "behind") {
+			statusColor = styles.ColorWarning
 		}
 
-		lines = append(lines, syncStatusStyled+" "+remoteIndicator)
+		lines = append(lines, fmt.Sprintf("%s %s", 
+			lipgloss.NewStyle().Foreground(styles.ColorPrimary).Render(icon),
+			lipgloss.NewStyle().Foreground(statusColor).Render(syncStatus)))
 	} else {
-		lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("no remote"))
+		lines = append(lines, fmt.Sprintf("%s %s", 
+			lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("☁"),
+			"No remote configured"))
 	}
 
-	return strings.Join(lines, "\n")
+	return strings.Join(lines, "\n\n")
 }
 
 // renderCommitCard renders commit card content
 func (m DashboardModel) renderCommitCard() string {
-	var lines []string
-
 	if m.repo == nil {
-		lines = append(lines, "Loading...")
-		lines = append(lines, "")
-		lines = append(lines, "")
-		lines = append(lines, "")
-		return strings.Join(lines, "\n")
+		return "Loading..."
 	}
 
+	styles := GetGlobalThemeManager().GetStyles()
+	
 	if m.repo.HasChanges() {
-		lines = append(lines, "Analyze changes with")
-		lines = append(lines, "AI assistance")
-		lines = append(lines, "")
-		lines = append(lines, "")
-	} else {
-		styles := GetGlobalThemeManager().GetStyles()
-		lines = append(lines, styles.StatusOk.Render("No changes"))
-		lines = append(lines, "")
-		lines = append(lines, "Make changes first")
-		lines = append(lines, "")
+		return fmt.Sprintf("%s\n\n%s\n%s",
+			styles.StatusInfo.Render("Ready to commit"),
+			fmt.Sprintf("%d files staged", m.repo.TotalChanges()),
+			lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("Press Enter to start"))
 	}
 
-	return strings.Join(lines, "\n")
+	return fmt.Sprintf("%s\n\n%s",
+		styles.StatusOk.Render("Nothing to commit"),
+		lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("Working tree clean"))
 }
 
 // renderMergeCard renders merge card content
 func (m DashboardModel) renderMergeCard() string {
-	var lines []string
-
 	if m.branchInfo == nil {
-		lines = append(lines, "Loading...")
-		lines = append(lines, "")
-		lines = append(lines, "")
-		lines = append(lines, "")
-		return strings.Join(lines, "\n")
+		return "Loading..."
 	}
+
+	styles := GetGlobalThemeManager().GetStyles()
 
 	if m.branchInfo.Parent() != "" {
 		parent := m.branchInfo.Parent()
-		if len(parent) > 25 {
-			parent = parent[:22] + "..."
+		if len(parent) > 20 {
+			parent = parent[:17] + "..."
 		}
-		lines = append(lines, fmt.Sprintf("Target: %s", parent))
+		
+		status := "Up to date"
 		if m.branchInfo.CommitCount() > 0 {
-			lines = append(lines, fmt.Sprintf("%d commits ready", m.branchInfo.CommitCount()))
-		} else {
-			lines = append(lines, "")
+			status = fmt.Sprintf("%d commits ahead", m.branchInfo.CommitCount())
 		}
-		lines = append(lines, "")
-		lines = append(lines, "")
-	} else {
-		lines = append(lines, "No parent branch")
-		lines = append(lines, "configured")
-		lines = append(lines, "")
-		lines = append(lines, "")
+		
+		return fmt.Sprintf("Target: %s\n\n%s\n%s",
+			lipgloss.NewStyle().Foreground(styles.ColorSecondary).Bold(true).Render(parent),
+			status,
+			lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("Press Enter to merge"))
 	}
 
-	return strings.Join(lines, "\n")
+	return fmt.Sprintf("%s\n\n%s",
+		"No parent branch",
+		lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("Configure in settings"))
 }
 
 // renderCommitsCard renders recent commits card content
 func (m DashboardModel) renderCommitsCard() string {
-	var lines []string
-
 	if m.recentCommits == nil {
-		lines = append(lines, "Loading...")
-		lines = append(lines, "")
-		lines = append(lines, "")
-		lines = append(lines, "")
-		return strings.Join(lines, "\n")
+		return "Loading..."
 	}
 
 	if len(m.recentCommits) == 0 {
-		lines = append(lines, "No commits yet")
-		lines = append(lines, "")
-		lines = append(lines, "")
-		lines = append(lines, "")
-		return strings.Join(lines, "\n")
+		return "No commits yet"
 	}
+
+	styles := GetGlobalThemeManager().GetStyles()
+	var lines []string
 
 	maxCommits := 3
 	if len(m.recentCommits) < maxCommits {
@@ -738,21 +721,16 @@ func (m DashboardModel) renderCommitsCard() string {
 
 	for i := 0; i < maxCommits; i++ {
 		commit := m.recentCommits[i]
-		hash := commit.Hash[:7]
+		hash := styles.StatusInfo.Render(commit.Hash[:7])
 		msg := commit.Message
-		if len(msg) > 25 {
-			msg = msg[:22] + "..."
+		if len(msg) > 20 {
+			msg = msg[:17] + "..."
 		}
+		
+		timeStr := relativeTime(commit.Date)
+		
 		lines = append(lines, fmt.Sprintf("%s %s", hash, msg))
-	}
-
-	if len(m.recentCommits) > maxCommits {
-		lines = append(lines, fmt.Sprintf("... +%d more", len(m.recentCommits)-maxCommits))
-	}
-
-	// Pad to exactly 4 lines
-	for len(lines) < 4 {
-		lines = append(lines, "")
+		lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("  "+timeStr))
 	}
 
 	return strings.Join(lines, "\n")
@@ -760,43 +738,45 @@ func (m DashboardModel) renderCommitsCard() string {
 
 // renderBranchesCard renders branches card content
 func (m DashboardModel) renderBranchesCard() string {
-	var lines []string
-
 	if m.branches == nil {
-		lines = append(lines, "Loading...")
-		lines = append(lines, "")
-		lines = append(lines, "")
-		lines = append(lines, "")
-		return strings.Join(lines, "\n")
+		return "Loading..."
 	}
 
 	if len(m.branches) == 0 {
-		lines = append(lines, "No branches")
-		lines = append(lines, "")
-		lines = append(lines, "")
-		lines = append(lines, "")
-		return strings.Join(lines, "\n")
+		return "No branches"
 	}
 
-	lines = append(lines, fmt.Sprintf("%d branches", len(m.branches)))
+	styles := GetGlobalThemeManager().GetStyles()
+	var lines []string
+
+	// Show total count
+	lines = append(lines, fmt.Sprintf("%d local branches", len(m.branches)))
 	lines = append(lines, "")
 
-	maxBranches := 2
+	maxBranches := 3
 	if len(m.branches) < maxBranches {
 		maxBranches = len(m.branches)
 	}
 
 	for i := 0; i < maxBranches; i++ {
 		branch := m.branches[i]
-		if len(branch) > 30 {
-			branch = branch[:27] + "..."
+		isCurrent := m.repo != nil && branch == m.repo.CurrentBranch()
+		
+		prefix := "  "
+		style := lipgloss.NewStyle()
+		
+		if isCurrent {
+			prefix = "● "
+			style = style.Foreground(styles.ColorSuccess)
+		} else {
+			style = style.Foreground(styles.ColorMuted)
 		}
-		lines = append(lines, "• "+branch)
-	}
-
-	// Pad to exactly 4 lines
-	for len(lines) < 4 {
-		lines = append(lines, "")
+		
+		if len(branch) > 25 {
+			branch = branch[:22] + "..."
+		}
+		
+		lines = append(lines, style.Render(prefix+branch))
 	}
 
 	return strings.Join(lines, "\n")
@@ -804,13 +784,12 @@ func (m DashboardModel) renderBranchesCard() string {
 
 // renderActionsCard renders quick actions card content
 func (m DashboardModel) renderActionsCard() string {
-	var lines []string
-	lines = append(lines, "Help & Shortcuts")
-	lines = append(lines, "")
-	lines = append(lines, "r - Refresh")
-	lines = append(lines, "")
-
-	return strings.Join(lines, "\n")
+	styles := GetGlobalThemeManager().GetStyles()
+	
+	return fmt.Sprintf("%s\n\n%s\n%s",
+		"Shortcuts:",
+		styles.ShortcutKey.Render("r") + " Refresh",
+		styles.ShortcutKey.Render("?") + " Help Menu")
 }
 
 // renderSubmenu renders the active submenu as an overlay
@@ -845,39 +824,26 @@ func (m DashboardModel) renderCommitOptionsMenu() string {
 	lines = append(lines, styles.CardTitle.Render("Commit Options"))
 	lines = append(lines, "")
 
-	// Option 0: Conventional commits
-	checkbox := "[ ]"
-	if m.useConventional {
-		checkbox = styles.Checkbox.Render("[x]")
+	// Show current mode (informational)
+	mode := "Standard"
+	if m.config.Commits.Convention == "conventional" {
+		mode = "Conventional"
 	}
-	opt0 := fmt.Sprintf("%s Conventional commits format", checkbox)
+	info := fmt.Sprintf("Format: %s (configured in settings)", mode)
+	lines = append(lines, styles.Description.Render(info))
+	lines = append(lines, "")
+
+	// Option 0: Execute
+	opt0 := "  Analyze and commit"
 	if m.submenuIndex == 0 {
-		opt0 = styles.SubmenuOptionActive.Render("▶ " + opt0)
+		opt0 = styles.SubmenuOptionActive.Render("▶ " + styles.StatusInfo.Render("Analyze and commit"))
 	} else {
-		opt0 = styles.SubmenuOption.Render("  " + opt0)
+		opt0 = styles.SubmenuOption.Render(opt0)
 	}
 	lines = append(lines, opt0)
 
-	// Option 1: Custom message (placeholder)
-	opt1 := "  Add custom context (not implemented)"
-	if m.submenuIndex == 1 {
-		opt1 = styles.SubmenuOptionActive.Render("▶ Add custom context (not implemented)")
-	} else {
-		opt1 = styles.SubmenuOption.Render(opt1)
-	}
-	lines = append(lines, opt1)
-
-	// Option 2: Execute
-	opt2 := "  Analyze and commit"
-	if m.submenuIndex == 2 {
-		opt2 = styles.SubmenuOptionActive.Render("▶ " + styles.StatusInfo.Render("Analyze and commit"))
-	} else {
-		opt2 = styles.SubmenuOption.Render(opt2)
-	}
-	lines = append(lines, opt2)
-
 	lines = append(lines, "")
-	lines = append(lines, styles.ShortcutDesc.Render("Space: toggle  •  Enter: select  •  Esc: cancel"))
+	lines = append(lines, styles.ShortcutDesc.Render("Enter: select  •  Esc: cancel"))
 
 	return strings.Join(lines, "\n")
 }
@@ -889,32 +855,14 @@ func (m DashboardModel) renderMergeOptionsMenu() string {
 	lines = append(lines, styles.CardTitle.Render("Merge Options"))
 	lines = append(lines, "")
 
-	// Option 0: Source branch (placeholder)
-	opt0 := "  Specify source branch (not implemented)"
+	// Option 0: Execute
+	opt0 := "  Auto-detect and merge"
 	if m.submenuIndex == 0 {
-		opt0 = styles.SubmenuOptionActive.Render("▶ Specify source branch (not implemented)")
+		opt0 = styles.SubmenuOptionActive.Render("▶ " + styles.StatusInfo.Render("Auto-detect and merge"))
 	} else {
 		opt0 = styles.SubmenuOption.Render(opt0)
 	}
 	lines = append(lines, opt0)
-
-	// Option 1: Target branch (placeholder)
-	opt1 := "  Specify target branch (not implemented)"
-	if m.submenuIndex == 1 {
-		opt1 = styles.SubmenuOptionActive.Render("▶ Specify target branch (not implemented)")
-	} else {
-		opt1 = styles.SubmenuOption.Render(opt1)
-	}
-	lines = append(lines, opt1)
-
-	// Option 2: Execute
-	opt2 := "  Auto-detect and merge"
-	if m.submenuIndex == 2 {
-		opt2 = styles.SubmenuOptionActive.Render("▶ " + styles.StatusInfo.Render("Auto-detect and merge"))
-	} else {
-		opt2 = styles.SubmenuOption.Render(opt2)
-	}
-	lines = append(lines, opt2)
 
 	lines = append(lines, "")
 	lines = append(lines, styles.ShortcutDesc.Render("Enter: select  •  Esc: cancel"))
@@ -1275,14 +1223,15 @@ func (m DashboardModel) renderRepositoryDetailsMenu() string {
 // renderFooter renders dashboard footer
 func (m DashboardModel) renderFooter() string {
 	styles := GetGlobalThemeManager().GetStyles()
-	shortcuts := []string{
-		styles.ShortcutKey.Render("↑↓←→/hjkl") + " " + styles.ShortcutDesc.Render("navigate"),
-		styles.ShortcutKey.Render("enter") + " " + styles.ShortcutDesc.Render("select"),
-		styles.ShortcutKey.Render("r") + " " + styles.ShortcutDesc.Render("refresh"),
-		styles.ShortcutKey.Render("q/esc") + " " + styles.ShortcutDesc.Render("quit"),
-	}
-
-	return styles.Footer.Render(strings.Join(shortcuts, "  •  "))
+	
+	// Minimal footer
+	return styles.Footer.Render(
+		fmt.Sprintf("%s navigate  •  %s select  •  %s quit", 
+			styles.ShortcutKey.Render("arrows"),
+			styles.ShortcutKey.Render("enter"),
+			styles.ShortcutKey.Render("q"),
+		),
+	)
 }
 
 // Getters for action results
