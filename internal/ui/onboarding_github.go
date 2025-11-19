@@ -163,10 +163,11 @@ func (m OnboardingGitHubScreen) Update(msg tea.Msg) (OnboardingGitHubScreen, tea
 				return m, m.createRepository()
 			}
 			// For dropdowns, toggle them
-			if m.focusedField == 3 { // License dropdown
+			switch m.focusedField {
+			case 3: // License dropdown
 				m.license.Toggle()
 				return m, nil
-			} else if m.focusedField == 4 { // Gitignore dropdown
+			case 4: // Gitignore dropdown
 				m.gitignore.Toggle()
 				return m, nil
 			}
@@ -235,11 +236,12 @@ func (m OnboardingGitHubScreen) Update(msg tea.Msg) (OnboardingGitHubScreen, tea
 
 		case "backspace", "delete":
 			// Handle text input deletion
-			if m.focusedField == 0 {
+			switch m.focusedField {
+			case 0:
 				if len(m.repoName.Value) > 0 {
 					m.repoName.Value = m.repoName.Value[:len(m.repoName.Value)-1]
 				}
-			} else if m.focusedField == 1 {
+			case 1:
 				if len(m.description.Value) > 0 {
 					m.description.Value = m.description.Value[:len(m.description.Value)-1]
 				}

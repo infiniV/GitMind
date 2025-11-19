@@ -251,13 +251,14 @@ func (m CommitViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				
 				// Update focus state of inputs
-				if m.confirmationFocus == 0 {
+				switch m.confirmationFocus {
+				case 0:
 					m.msgInput.Focus()
 					m.branchInput.Blur()
-				} else if m.confirmationFocus == 1 {
+				case 1:
 					m.msgInput.Blur()
 					m.branchInput.Focus()
-				} else {
+				default:
 					m.msgInput.Blur()
 					m.branchInput.Blur()
 				}
@@ -265,44 +266,46 @@ func (m CommitViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			case "shift+tab":
 				m.confirmationFocus--
-				
+
 				// Skip branch input if not creating branch
 				selectedOption := m.options[m.selectedIndex]
 				if m.confirmationFocus == 1 && selectedOption.Action != domain.ActionCreateBranch {
 					m.confirmationFocus--
 				}
-				
+
 				if m.confirmationFocus < 0 {
 					m.confirmationFocus = 3
 				}
-				
+
 				// Update focus state of inputs
-				if m.confirmationFocus == 0 {
+				switch m.confirmationFocus {
+				case 0:
 					m.msgInput.Focus()
 					m.branchInput.Blur()
-				} else if m.confirmationFocus == 1 {
+				case 1:
 					m.msgInput.Blur()
 					m.branchInput.Focus()
-				} else {
+				default:
 					m.msgInput.Blur()
 					m.branchInput.Blur()
 				}
 				return m, textinput.Blink
 
 			case "enter":
-				if m.confirmationFocus == 2 { // Confirm button
+				switch m.confirmationFocus {
+				case 2: // Confirm button
 					// Save values
 					m.customMessage = m.msgInput.Value()
 					m.customBranch = m.branchInput.Value()
-					
+
 					// Rebuild options to reflect changes
 					m.options = m.buildOptions()
-					
+
 					// Signal decision
 					m.hasDecision = true
 					m.confirmed = true
 					return m, nil
-				} else if m.confirmationFocus == 3 { // Cancel button
+				case 3: // Cancel button
 					m.state = ViewStateBrowsing
 					m.msgInput.Blur()
 					m.branchInput.Blur()
@@ -325,13 +328,14 @@ func (m CommitViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				
 				// Update focus
-				if m.confirmationFocus == 0 {
+				switch m.confirmationFocus {
+				case 0:
 					m.msgInput.Focus()
 					m.branchInput.Blur()
-				} else if m.confirmationFocus == 1 {
+				case 1:
 					m.msgInput.Blur()
 					m.branchInput.Focus()
-				} else {
+				default:
 					m.msgInput.Blur()
 					m.branchInput.Blur()
 				}
@@ -346,10 +350,11 @@ func (m CommitViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Pass messages to inputs
 			var cmd tea.Cmd
-			if m.confirmationFocus == 0 {
+			switch m.confirmationFocus {
+			case 0:
 				m.msgInput, cmd = m.msgInput.Update(msg)
 				return m, cmd
-			} else if m.confirmationFocus == 1 {
+			case 1:
 				m.branchInput, cmd = m.branchInput.Update(msg)
 				return m, cmd
 			}
@@ -517,10 +522,10 @@ func (m CommitViewModel) renderOptionList(width int) string {
 		
 		var style lipgloss.Style
 		if isSelected {
-			style = styles.TabActive.Copy().Width(width).Padding(0, 1)
+			style = styles.TabActive.Width(width).Padding(0, 1)
 			label = "> " + label
 		} else {
-			style = styles.TabInactive.Copy().Width(width).Padding(0, 1)
+			style = styles.TabInactive.Width(width).Padding(0, 1)
 			label = "  " + label
 		}
 		
@@ -549,7 +554,7 @@ func (m CommitViewModel) renderDetailsPane(width, height int) string {
 	
 	// 2. Commit Message Preview (if applicable)
 	if selectedOption.Message != nil {
-		msgBox := styles.CommitBox.Copy().Width(width).Render(
+		msgBox := styles.CommitBox.Width(width).Render(
 			wrapText(selectedOption.Message.Title(), width-4))
 		sections = append(sections, msgBox)
 	}
@@ -585,14 +590,13 @@ func (m CommitViewModel) renderConfirmationModal() string {
 
 	// Message Input
 	msgLabel := styles.FormLabel.Render("Commit Message:")
-	msgInput := m.msgInput.View()
+	var msgInput string
 	if m.confirmationFocus == 0 {
 		// Highlight the input if focused
 		// We can't easily style the internal text of textinput.View() without rebuilding it
 		// But textinput handles its own styling.
 		// Let's just rely on the cursor blinking which textinput provides.
 		// Maybe add a border or indicator?
-		msgInput = styles.FormInputFocused.Render(m.msgInput.Value())
 		// Wait, if we render just the value, we lose the cursor.
 		// Let's stick to m.msgInput.View() but maybe wrap it in a border?
 		// Actually, let's just use the View() output.
@@ -636,13 +640,14 @@ func (m CommitViewModel) renderConfirmationModal() string {
 	confirmBtn := "Confirm"
 	cancelBtn := "Cancel"
 
-	if m.confirmationFocus == 2 {
+	switch m.confirmationFocus {
+	case 2:
 		confirmBtn = buttonActiveStyle.Render(confirmBtn)
 		cancelBtn = buttonStyle.Render(cancelBtn)
-	} else if m.confirmationFocus == 3 {
+	case 3:
 		confirmBtn = buttonStyle.Render(confirmBtn)
 		cancelBtn = buttonActiveStyle.Render(cancelBtn)
-	} else {
+	default:
 		confirmBtn = buttonStyle.Render(confirmBtn)
 		cancelBtn = buttonStyle.Render(cancelBtn)
 	}
@@ -686,98 +691,20 @@ func (m CommitViewModel) renderConfirmationModal() string {
 	)
 }
 
-func (m CommitViewModel) renderRepoInfo() string {
-	styles := GetGlobalThemeManager().GetStyles()
-	var lines []string
-
-	lines = append(lines, styles.SectionTitle.Render("Repository"))
-
-	pathLine := styles.RepoLabel.Render("Path:") + " " + styles.RepoValue.Render(m.repo.Path())
-	lines = append(lines, pathLine)
-
-	branchLine := styles.RepoLabel.Render("Branch:") + " " + styles.RepoValue.Render(m.repo.CurrentBranch())
-	lines = append(lines, branchLine)
-
-	changesLine := styles.RepoLabel.Render("Changes:") + " " + styles.RepoValue.Render(m.repo.ChangeSummary())
-	lines = append(lines, changesLine)
-
-	return strings.Join(lines, "\n")
-}
-
 func (m CommitViewModel) renderRepoInfoCompact() string {
 	styles := GetGlobalThemeManager().GetStyles()
-	
+
 	// Single line: Path | Branch | Changes
 	path := styles.RepoValue.Render(m.repo.Path())
 	branch := styles.RepoValue.Render(m.repo.CurrentBranch())
 	changes := styles.RepoValue.Render(m.repo.ChangeSummary())
-	
+
 	labelStyle := styles.RepoLabel
-	
-	return fmt.Sprintf("%s %s  %s %s  %s %s", 
+
+	return fmt.Sprintf("%s %s  %s %s  %s %s",
 		labelStyle.Render("Path:"), path,
 		labelStyle.Render("Branch:"), branch,
 		labelStyle.Render("Changes:"), changes)
-}
-
-func (m CommitViewModel) renderCommitMessage() string {
-	styles := GetGlobalThemeManager().GetStyles()
-	var content string
-
-	if m.customMessage != "" {
-		content = m.customMessage
-	} else if m.decision.SuggestedMessage() != nil {
-		content = m.decision.SuggestedMessage().Title()
-	} else {
-		content = "No message generated"
-	}
-
-	title := styles.SectionTitle.Render("Suggested Commit Message")
-
-	// Calculate available width for commit box
-	usableWidth := m.windowWidth - 4 - 1 // margins and divider
-	leftWidth := int(float64(usableWidth) * 0.48)
-	boxWidth := leftWidth - 4 // Account for box padding/borders
-
-	// Wrap content to fit in box
-	wrappedContent := wrapText(content, boxWidth)
-
-	box := styles.CommitBox.Render(wrappedContent)
-
-	// Show AI analysis reasoning with wrapping
-	var reasoning string
-	if m.decision.Reasoning() != "" {
-		reasoningText := "AI Analysis: " + m.decision.Reasoning()
-		wrappedReasoning := wrapText(reasoningText, leftWidth-2)
-		reasoning = styles.Description.Render(wrappedReasoning)
-	}
-
-	if reasoning != "" {
-		return title + "\n" + box + "\n" + reasoning
-	}
-	return title + "\n" + box
-}
-
-func (m CommitViewModel) renderCommitMessageCompact() string {
-	styles := GetGlobalThemeManager().GetStyles()
-	var content string
-
-	if m.customMessage != "" {
-		content = m.customMessage
-	} else if m.decision.SuggestedMessage() != nil {
-		content = m.decision.SuggestedMessage().Title()
-	} else {
-		content = "No message generated"
-	}
-
-	// Just the box, no title, no reasoning (unless critical)
-	// Calculate available width
-	cardWidth := m.windowWidth - 4
-	if cardWidth < 80 { cardWidth = 80 }
-	boxWidth := cardWidth - 8 // padding
-
-	wrappedContent := wrapText(content, boxWidth)
-	return styles.CommitBox.Render(wrappedContent)
 }
 
 // renderOptionsContent returns just the options text for viewport

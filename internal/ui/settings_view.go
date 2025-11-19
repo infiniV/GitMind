@@ -716,7 +716,7 @@ func (m SettingsView) View() string {
 		contentWidth = 40
 	}
 	
-	contentStyle := styles.DashboardCard.Copy().
+	contentStyle := styles.DashboardCard.
 		Width(contentWidth)
 	
 	if m.height > 15 {
@@ -813,7 +813,7 @@ func (m SettingsView) renderGitSettings() string {
 	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
 
-	lines = append(lines, styles.CardTitle.Copy().Align(lipgloss.Left).Render("Git Configuration"))
+	lines = append(lines, styles.CardTitle.Align(lipgloss.Left).Render("Git Configuration"))
 	lines = append(lines, "")
 
 	inputWidth := m.width - 30
@@ -862,7 +862,7 @@ func (m SettingsView) renderGitHubSettings() string {
 	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
 
-	lines = append(lines, styles.CardTitle.Copy().Align(lipgloss.Left).Render("GitHub Integration"))
+	lines = append(lines, styles.CardTitle.Align(lipgloss.Left).Render("GitHub Integration"))
 	lines = append(lines, "")
 
 	inputWidth := m.width - 30
@@ -921,7 +921,7 @@ func (m SettingsView) renderCommitsSettings() string {
 	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
 
-	lines = append(lines, styles.CardTitle.Copy().Align(lipgloss.Left).Render("Commit Conventions"))
+	lines = append(lines, styles.CardTitle.Align(lipgloss.Left).Render("Commit Conventions"))
 	lines = append(lines, "")
 
 	inputWidth := m.width - 30
@@ -974,7 +974,7 @@ func (m SettingsView) renderNamingSettings() string {
 	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
 
-	lines = append(lines, styles.CardTitle.Copy().Align(lipgloss.Left).Render("Branch Naming Patterns"))
+	lines = append(lines, styles.CardTitle.Align(lipgloss.Left).Render("Branch Naming Patterns"))
 	lines = append(lines, "")
 
 	inputWidth := m.width - 30
@@ -1017,7 +1017,7 @@ func (m SettingsView) renderAISettings() string {
 	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
 
-	lines = append(lines, styles.CardTitle.Copy().Align(lipgloss.Left).Render("AI Provider Configuration"))
+	lines = append(lines, styles.CardTitle.Align(lipgloss.Left).Render("AI Provider Configuration"))
 	lines = append(lines, "")
 
 	inputWidth := m.width - 30
@@ -1081,7 +1081,7 @@ func (m SettingsView) renderUISettings() string {
 	styles := GetGlobalThemeManager().GetStyles()
 	var lines []string
 
-	lines = append(lines, styles.CardTitle.Copy().Align(lipgloss.Left).Render("User Interface Configuration"))
+	lines = append(lines, styles.CardTitle.Align(lipgloss.Left).Render("User Interface Configuration"))
 	lines = append(lines, "")
 
 	colWidth := (m.width - 10) / 2

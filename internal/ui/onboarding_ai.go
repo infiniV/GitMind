@@ -113,13 +113,14 @@ func (m OnboardingAIScreen) Update(msg tea.Msg) (OnboardingAIScreen, tea.Cmd) {
 				return m, nil
 			}
 			// For dropdowns, toggle them
-			if m.focusedField == 0 {
+			switch m.focusedField {
+			case 0:
 				m.provider.Toggle()
 				return m, nil
-			} else if m.focusedField == 3 {
+			case 3:
 				m.defaultModel.Toggle()
 				return m, nil
-			} else if m.focusedField == 4 {
+			case 4:
 				m.fallbackModel.Toggle()
 				return m, nil
 			}
@@ -177,12 +178,13 @@ func (m OnboardingAIScreen) Update(msg tea.Msg) (OnboardingAIScreen, tea.Cmd) {
 
 		case "backspace", "delete":
 			// Handle text input deletion
-			if m.focusedField == 1 {
+			switch m.focusedField {
+			case 1:
 				if len(m.apiKey.Value) > 0 {
 					m.apiKey.Value = m.apiKey.Value[:len(m.apiKey.Value)-1]
 				}
 				m.error = "" // Clear error on input
-			} else if m.focusedField == 5 {
+			case 5:
 				if len(m.maxDiffSize.Value) > 0 {
 					m.maxDiffSize.Value = m.maxDiffSize.Value[:len(m.maxDiffSize.Value)-1]
 				}

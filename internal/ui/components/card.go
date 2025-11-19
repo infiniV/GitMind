@@ -157,12 +157,12 @@ func (sc *StatusCard) Render() string {
 	statusLine := sc.Icon + " " + textStyle.Render(sc.Status)
 	content := statusLine
 
-	if sc.Card.Content != "" {
-		content += "\n\n" + sc.Card.Content
+	if sc.Content != "" {
+		content += "\n\n" + sc.Content
 	}
 
 	// Update card content and render
-	sc.Card.Content = content
+	sc.Content = content
 	return sc.Card.Render()
 }
 
@@ -212,6 +212,6 @@ func (ic *InfoCard) Render() string {
 		content += line
 	}
 
-	ic.Card.Content = content
+	ic.Content = content
 	return ic.Card.Render()
 }

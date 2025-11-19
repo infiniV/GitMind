@@ -31,11 +31,12 @@ func TestOnboardingAIScreen_APITierRadioButton(t *testing.T) {
 
 			// Simulate key press
 			msg := tea.KeyMsg{}
-			if tt.keyString == "space" {
+			switch tt.keyString {
+			case "space":
 				msg.Type = tea.KeySpace
-			} else if tt.keyString == "right" {
+			case "right":
 				msg.Type = tea.KeyRight
-			} else if tt.keyString == "left" {
+			case "left":
 				msg.Type = tea.KeyLeft
 			}
 
@@ -71,12 +72,13 @@ func TestOnboardingAIScreen_APIKeyInput(t *testing.T) {
 
 			// Simulate key press
 			msg := tea.KeyMsg{}
-			if tt.keyString == "backspace" {
+			switch tt.keyString {
+			case "backspace":
 				msg.Type = tea.KeyBackspace
-			} else if tt.keyString == " " {
+			case " ":
 				msg.Type = tea.KeyRunes
 				msg.Runes = []rune(" ")
-			} else {
+			default:
 				msg.Type = tea.KeyRunes
 				msg.Runes = []rune(tt.keyString)
 			}

@@ -181,12 +181,13 @@ func (m MergeViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, textinput.Blink
 
 			case "enter":
-				if m.confirmationFocus == 1 { // Confirm button
+				switch m.confirmationFocus {
+				case 1: // Confirm button
 					// Signal decision
 					m.hasDecision = true
 					m.confirmed = true
 					return m, nil
-				} else if m.confirmationFocus == 2 { // Cancel button
+				case 2: // Cancel button
 					m.state = ViewStateBrowsing
 					m.msgInput.Blur()
 					return m, nil
@@ -366,10 +367,10 @@ func (m MergeViewModel) renderStrategyList(width int) string {
 		
 		var style lipgloss.Style
 		if isSelected {
-			style = styles.TabActive.Copy().Width(width).Padding(0, 1)
+			style = styles.TabActive.Width(width).Padding(0, 1)
 			label = "> " + label
 		} else {
-			style = styles.TabInactive.Copy().Width(width).Padding(0, 1)
+			style = styles.TabInactive.Width(width).Padding(0, 1)
 			label = "  " + label
 		}
 		
@@ -418,7 +419,7 @@ func (m MergeViewModel) renderDetailsPane(width, height int) string {
 	
 	// 3. Merge Message Preview
 	if m.analysis.MergeMessage != nil {
-		msgBox := styles.CommitBox.Copy().Width(width).Render(
+		msgBox := styles.CommitBox.Width(width).Render(
 			wrapTextMerge(m.analysis.MergeMessage.FullMessage(), width-4))
 		sections = append(sections, msgBox)
 	}
@@ -441,15 +442,15 @@ func (m MergeViewModel) renderConfirmationModal() string {
 	title := styles.SectionTitle.Render("CONFIRM MERGE")
 	
 	// Message Input
-	inputStyle := styles.FormInput.Copy().Width(width - 4)
+	inputStyle := styles.FormInput.Width(width - 4)
 	if m.confirmationFocus == 0 {
-		inputStyle = styles.FormInputFocused.Copy().Width(width - 4)
+		inputStyle = styles.FormInputFocused.Width(width - 4)
 	}
 	inputView := inputStyle.Render(m.msgInput.View())
-	
+
 	// Buttons
-	btnStyle := styles.TabInactive.Copy().Padding(0, 2)
-	activeBtnStyle := styles.TabActive.Copy().Padding(0, 2)
+	btnStyle := styles.TabInactive.Padding(0, 2)
+	activeBtnStyle := styles.TabActive.Padding(0, 2)
 	
 	confirmBtn := btnStyle.Render("Confirm")
 	if m.confirmationFocus == 1 {
@@ -474,7 +475,7 @@ func (m MergeViewModel) renderConfirmationModal() string {
 	)
 	
 	// Box
-	box := styles.CommitBox.Copy().
+	box := styles.CommitBox.
 		Width(width).
 		Height(height).
 		Align(lipgloss.Center).

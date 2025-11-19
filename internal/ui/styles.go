@@ -29,10 +29,6 @@ func GetGlobalThemeManager() *ThemeManager {
 // These are provided for existing code during transition, but new code should
 // use GetGlobalThemeManager().GetStyles() directly.
 
-func getConfidenceBadge(confidence float64) string {
-	return defaultThemeManager.GetConfidenceBadge(confidence)
-}
-
 func renderSeparator(width int) string {
 	return defaultThemeManager.RenderSeparator(width)
 }
