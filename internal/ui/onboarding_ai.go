@@ -28,6 +28,9 @@ type OnboardingAIScreen struct {
 	shouldContinue bool
 	shouldGoBack   bool
 	error          string
+	
+	width  int
+	height int
 }
 
 // NewOnboardingAIScreen creates a new AI screen
@@ -77,6 +80,8 @@ func NewOnboardingAIScreen(step, totalSteps int, config *domain.Config) Onboardi
 		includeContext: NewCheckbox("Include branch context in AI analysis", config.AI.IncludeContext),
 
 		focusedField: 0,
+		width:        100,
+		height:       40,
 	}
 
 	// Set current values
@@ -99,6 +104,11 @@ func (m OnboardingAIScreen) Init() tea.Cmd {
 // Update handles messages
 func (m OnboardingAIScreen) Update(msg tea.Msg) (OnboardingAIScreen, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "enter":
@@ -256,7 +266,6 @@ func (m OnboardingAIScreen) View() string {
 	desc := lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(
 		"Configure your AI provider for intelligent commit and merge assistance.")
 	sections = append(sections, desc)
-
 	sections = append(sections, "")
 
 	// Provider (currently only Cerebras)
@@ -323,17 +332,34 @@ func (m OnboardingAIScreen) View() string {
 	continueBtn.Active = (m.apiKey.Value != "")
 	sections = append(sections, continueBtn.View())
 
-	sections = append(sections, "")
-	sections = append(sections, renderSeparator(70))
+	// Wrap in card
+	content := lipgloss.JoinVertical(lipgloss.Left, sections...)
+	cardStyle := styles.DashboardCard.Padding(1, 2)
+
+	// Main view assembly
+	mainView := []string{
+		header,
+		styles.Metadata.Render(progress),
+		"",
+		cardStyle.Render(content),
+		"",
+		renderSeparator(70),
+	}
 
 	// Footer
 	footer := styles.Footer.Render(
 		styles.ShortcutKey.Render("Tab/↑↓")+" "+styles.ShortcutDesc.Render("Navigate")+"  "+
 			styles.ShortcutKey.Render("Space/←→")+" "+styles.ShortcutDesc.Render("Select")+"  "+
 			styles.ShortcutKey.Render("←")+" "+styles.ShortcutDesc.Render("Back"))
-	sections = append(sections, footer)
+	mainView = append(mainView, footer)
 
-	return strings.Join(sections, "\n")
+	return lipgloss.Place(
+		m.width,
+		m.height,
+		lipgloss.Center,
+		lipgloss.Center,
+		lipgloss.JoinVertical(lipgloss.Left, mainView...),
+	)
 }
 
 // ShouldContinue returns true if user wants to continue
