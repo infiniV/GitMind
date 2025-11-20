@@ -1099,3 +1099,116 @@ func ParseGitHubRepo(remoteURL string) (*GitHubRepo, error) {
 		Repo:  pathParts[1],
 	}, nil
 }
+
+// DeleteBranch deletes a local branch.
+func (e *ExecOperations) DeleteBranch(ctx context.Context, repoPath, branchName string, force bool) error {
+	if branchName == "" {
+		return errors.New("branch name cannot be empty")
+	}
+
+	// Determine delete flag
+	deleteFlag := "-d" // Safe delete
+	if force {
+		deleteFlag = "-D" // Force delete
+	}
+
+	_, stderr, err := e.execGit(ctx, repoPath, "branch", deleteFlag, branchName)
+	if err != nil {
+		if strings.Contains(stderr, "not found") {
+			return fmt.Errorf("branch '%s' not found", branchName)
+		}
+		if strings.Contains(stderr, "not fully merged") {
+			return fmt.Errorf("branch '%s' is not fully merged (use force delete if you're sure)", branchName)
+		}
+		if strings.Contains(stderr, "checked out") {
+			return fmt.Errorf("cannot delete branch '%s' (currently checked out)", branchName)
+		}
+		return fmt.Errorf("failed to delete branch: %s: %w", stderr, err)
+	}
+
+	return nil
+}
+
+// DeleteRemoteBranch deletes a branch from the remote repository.
+func (e *ExecOperations) DeleteRemoteBranch(ctx context.Context, repoPath, remoteName, branchName string) error {
+	if remoteName == "" {
+		return errors.New("remote name cannot be empty")
+	}
+	if branchName == "" {
+		return errors.New("branch name cannot be empty")
+	}
+
+	// Use git push <remote> --delete <branch>
+	_, stderr, err := e.execGit(ctx, repoPath, "push", remoteName, "--delete", branchName)
+	if err != nil {
+		if strings.Contains(stderr, "remote ref does not exist") ||
+			strings.Contains(stderr, "unable to delete") {
+			return fmt.Errorf("remote branch '%s/%s' not found", remoteName, branchName)
+		}
+		return fmt.Errorf("failed to delete remote branch: %s: %w", stderr, err)
+	}
+
+	return nil
+}
+
+// RenameBranch renames a local branch from oldName to newName.
+func (e *ExecOperations) RenameBranch(ctx context.Context, repoPath, oldName, newName string) error {
+	if oldName == "" || newName == "" {
+		return errors.New("branch names cannot be empty")
+	}
+
+	// Check if we're renaming the current branch
+	currentBranch, err := e.GetCurrentBranch(ctx, repoPath)
+	if err != nil {
+		return fmt.Errorf("failed to get current branch: %w", err)
+	}
+
+	// Use git branch -m to rename
+	// If oldName is the current branch, git will automatically handle it
+	args := []string{"branch", "-m"}
+
+	// If not the current branch, we need to specify the old name
+	if oldName != currentBranch {
+		args = append(args, oldName)
+	}
+	args = append(args, newName)
+
+	_, stderr, err := e.execGit(ctx, repoPath, args...)
+	if err != nil {
+		if strings.Contains(stderr, "already exists") {
+			return fmt.Errorf("branch '%s' already exists", newName)
+		}
+		if strings.Contains(stderr, "not found") || strings.Contains(stderr, "doesn't exist") {
+			return fmt.Errorf("branch '%s' not found", oldName)
+		}
+		return fmt.Errorf("failed to rename branch: %s: %w", stderr, err)
+	}
+
+	return nil
+}
+
+// SetUpstreamBranch sets the upstream tracking branch for a local branch.
+func (e *ExecOperations) SetUpstreamBranch(ctx context.Context, repoPath, branch, upstream string) error {
+	if branch == "" {
+		return errors.New("branch name cannot be empty")
+	}
+	if upstream == "" {
+		return errors.New("upstream branch cannot be empty")
+	}
+
+	// Use git branch --set-upstream-to=<upstream> <branch>
+	upstreamArg := fmt.Sprintf("--set-upstream-to=%s", upstream)
+
+	_, stderr, err := e.execGit(ctx, repoPath, "branch", upstreamArg, branch)
+	if err != nil {
+		if strings.Contains(stderr, "does not exist") {
+			return fmt.Errorf("upstream branch '%s' not found", upstream)
+		}
+		if strings.Contains(stderr, "no such branch") {
+			return fmt.Errorf("branch '%s' not found", branch)
+		}
+		return fmt.Errorf("failed to set upstream: %s: %w", stderr, err)
+	}
+
+	return nil
+}

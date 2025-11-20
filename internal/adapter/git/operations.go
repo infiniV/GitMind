@@ -110,6 +110,24 @@ type Operations interface {
 
 	// AbortMerge aborts an in-progress merge.
 	AbortMerge(ctx context.Context, repoPath string) error
+
+	// Branch Management Operations
+
+	// DeleteBranch deletes a local branch.
+	// If force is true, uses -D (force delete) instead of -d (safe delete).
+	// Safe delete will fail if the branch has unmerged changes.
+	DeleteBranch(ctx context.Context, repoPath, branchName string, force bool) error
+
+	// DeleteRemoteBranch deletes a branch from the remote repository.
+	DeleteRemoteBranch(ctx context.Context, repoPath, remoteName, branchName string) error
+
+	// RenameBranch renames a local branch from oldName to newName.
+	// If oldName is the current branch, it will be renamed and remain checked out.
+	RenameBranch(ctx context.Context, repoPath, oldName, newName string) error
+
+	// SetUpstreamBranch sets the upstream tracking branch for a local branch.
+	// upstream should be in the format "remote/branch" (e.g., "origin/main").
+	SetUpstreamBranch(ctx context.Context, repoPath, branch, upstream string) error
 }
 
 // CommitInfo represents information about a commit.

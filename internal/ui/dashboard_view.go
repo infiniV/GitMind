@@ -43,6 +43,7 @@ const (
 	ActionSetupRemote
 	ActionListPRs
 	ActionCreatePR
+	ActionManageBranches
 )
 
 // DashboardModel represents the state of the dashboard view
@@ -257,8 +258,9 @@ func (m DashboardModel) handleCardActivation() (tea.Model, tea.Cmd) {
 	case 3: // Recent Commits - show commit list
 		m.activeSubmenu = CommitListMenu
 
-	case 4: // Branch Switcher - show branch list
-		m.activeSubmenu = BranchListMenu
+	case 4: // Branch Management - open full branch view
+		m.action = ActionManageBranches
+		m.activeSubmenu = NoSubmenu
 
 	case 5: // Quick Actions - show help
 		m.activeSubmenu = HelpMenu

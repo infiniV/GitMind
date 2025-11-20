@@ -48,6 +48,8 @@ const (
 	StatePRList
 	StatePRDetail
 	StatePRManaging
+	StateBranchList
+	StateBranchManaging
 	StateOnboarding
 )
 
@@ -75,6 +77,7 @@ type AppModel struct {
 	onboardingView *OnboardingModel
 	prListView     *PRListViewModel
 	prDetailView   *PRDetailViewModel
+	branchView     *BranchViewModel
 
 	// Dependencies
 	gitOps     git.Operations
@@ -366,8 +369,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 
-			case StatePRList, StatePRDetail:
-				// PR views can return directly without confirmation
+			case StateBranchList, StatePRList, StatePRDetail:
+				// These views can return directly without confirmation
 				m.state = StateDashboard
 				return m, m.dashboard.Init()
 			}
@@ -559,6 +562,13 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// List pull requests
 			m.loadingMessage = "Loading pull requests"
 			return m, m.listPRs("all")
+
+		case ActionManageBranches:
+			// Open branch management view
+			branchView := NewBranchViewModel(m.repoPath, m.cfg, m.gitOps)
+			m.branchView = &branchView
+			m.state = StateBranchList
+			return m, m.branchView.Init()
 
 		case ActionCreatePR:
 			// Create pull request - analyze merge first to suggest PR
@@ -792,6 +802,23 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		return m, cmd
 
+	case StateBranchList:
+		if m.branchView == nil {
+			return m, nil
+		}
+
+		updated, cmd := m.branchView.Update(msg)
+		branchModel := updated.(BranchViewModel)
+		m.branchView = &branchModel
+
+		// Check if branch view wants to return to dashboard
+		if m.branchView.ShouldReturnToDashboard() {
+			m.state = StateDashboard
+			return m, m.dashboard.Init()
+		}
+
+		return m, cmd
+
 	case StatePRList:
 		if m.prListView == nil {
 			return m, nil
@@ -897,6 +924,14 @@ func (m AppModel) View() string {
 			if m.mergeView != nil {
 				overlayView = m.mergeView.View()
 			}
+
+		case StateBranchList:
+			if m.branchView != nil {
+				overlayView = m.branchView.View()
+			}
+
+		case StateBranchManaging:
+			overlayView = m.renderLoadingOverlay()
 
 		case StatePRList:
 			if m.prListView != nil {
