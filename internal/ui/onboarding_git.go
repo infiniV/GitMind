@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
-	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -24,6 +23,9 @@ type OnboardingGitInitScreen struct {
 	shouldContinue bool
 	shouldGoBack   bool
 	error          string
+	
+	width  int
+	height int
 }
 
 // NewOnboardingGitInitScreen creates a new git init screen
@@ -48,6 +50,8 @@ func NewOnboardingGitInitScreen(step, totalSteps int, gitOps git.Operations, rep
 		repoPath:   repoPath,
 		isGitRepo:  isRepo,
 		hasRemote:  hasRemote,
+		width:      100,
+		height:     40,
 	}
 }
 
@@ -59,6 +63,11 @@ func (m OnboardingGitInitScreen) Init() tea.Cmd {
 // Update handles messages
 func (m OnboardingGitInitScreen) Update(msg tea.Msg) (OnboardingGitInitScreen, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "enter":
@@ -158,7 +167,18 @@ func (m OnboardingGitInitScreen) View() string {
 	footer := styles.Footer.Render(footerText)
 	sections = append(sections, footer)
 
-	return strings.Join(sections, "\n")
+	// Wrap in card
+	content := lipgloss.JoinVertical(lipgloss.Left, sections...)
+	cardStyle := styles.DashboardCard.Padding(1, 2)
+	
+	// Center the card
+	return lipgloss.Place(
+		m.width,
+		m.height,
+		lipgloss.Center,
+		lipgloss.Center,
+		cardStyle.Render(content),
+	)
 }
 
 // ShouldContinue returns true if user wants to continue

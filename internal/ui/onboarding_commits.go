@@ -28,6 +28,9 @@ type OnboardingCommitsScreen struct {
 
 	shouldContinue bool
 	shouldGoBack   bool
+	
+	width  int
+	height int
 }
 
 // NewOnboardingCommitsScreen creates a new commits screen
@@ -78,6 +81,8 @@ func NewOnboardingCommitsScreen(step, totalSteps int, config *domain.Config) Onb
 		customTemplate:  NewTextInput("Custom Template", "{type}({scope}): {description}"),
 
 		focusedField: 0,
+		width:        100,
+		height:       40,
 	}
 
 	if config.Commits.CustomTemplate != "" {
@@ -97,6 +102,11 @@ func (m OnboardingCommitsScreen) Init() tea.Cmd {
 // Update handles messages
 func (m OnboardingCommitsScreen) Update(msg tea.Msg) (OnboardingCommitsScreen, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "enter":
@@ -258,13 +268,9 @@ func (m OnboardingCommitsScreen) View() string {
 
 	// Header
 	header := styles.Header.Render("Commit Conventions")
-	sections = append(sections, header)
 
 	// Progress
 	progress := fmt.Sprintf("Step %d of %d", m.step, m.totalSteps)
-	sections = append(sections, styles.Metadata.Render(progress))
-
-	sections = append(sections, "")
 
 	// Description
 	desc := lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(
@@ -336,17 +342,34 @@ func (m OnboardingCommitsScreen) View() string {
 	continueBtn.Focused = (m.focusedField == 5)
 	sections = append(sections, continueBtn.View())
 
-	sections = append(sections, "")
-	sections = append(sections, renderSeparator(70))
+	// Wrap in card
+	content := lipgloss.JoinVertical(lipgloss.Left, sections...)
+	cardStyle := styles.DashboardCard.Padding(1, 2)
+
+	// Main view assembly
+	mainView := []string{
+		header,
+		styles.Metadata.Render(progress),
+		"",
+		cardStyle.Render(content),
+		"",
+		renderSeparator(70),
+	}
 
 	// Footer
 	footer := styles.Footer.Render(
 		styles.ShortcutKey.Render("Tab/↑↓")+" "+styles.ShortcutDesc.Render("Navigate")+"  "+
 			styles.ShortcutKey.Render("Space/←→")+" "+styles.ShortcutDesc.Render("Select")+"  "+
 			styles.ShortcutKey.Render("←")+" "+styles.ShortcutDesc.Render("Back"))
-	sections = append(sections, footer)
+	mainView = append(mainView, footer)
 
-	return strings.Join(sections, "\n")
+	return lipgloss.Place(
+		m.width,
+		m.height,
+		lipgloss.Center,
+		lipgloss.Center,
+		lipgloss.JoinVertical(lipgloss.Left, mainView...),
+	)
 }
 
 // ShouldContinue returns true if user wants to continue
