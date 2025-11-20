@@ -44,6 +44,9 @@ type OnboardingGitHubScreen struct {
 	shouldContinue bool
 	shouldGoBack   bool
 	shouldSkip     bool
+	
+	width  int
+	height int
 }
 
 // NewOnboardingGitHubScreen creates a new GitHub screen
@@ -77,6 +80,8 @@ func NewOnboardingGitHubScreen(step, totalSteps int, config *domain.Config, repo
 		enableProjects: NewCheckbox("Enable Projects", false),
 
 		focusedField: 0,
+		width:        100,
+		height:       40,
 	}
 
 	// Set default values from config
@@ -121,6 +126,11 @@ type githubCreateMsg struct {
 // Update handles messages
 func (m OnboardingGitHubScreen) Update(msg tea.Msg) (OnboardingGitHubScreen, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+
 	case githubCheckMsg:
 		m.ghAvailable = msg.available
 		m.ghAuthenticated = msg.authenticated
@@ -344,7 +354,7 @@ func (m OnboardingGitHubScreen) View() string {
 	// Check if checking status
 	if !m.checkComplete {
 		sections = append(sections, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("Checking GitHub CLI..."))
-		return strings.Join(sections, "\n")
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, strings.Join(sections, "\n"))
 	}
 
 	// If gh not available
@@ -364,7 +374,9 @@ func (m OnboardingGitHubScreen) View() string {
 			styles.ShortcutKey.Render("Enter")+" "+styles.ShortcutDesc.Render("Skip & Continue")+"  "+
 				styles.ShortcutKey.Render("Esc")+" "+styles.ShortcutDesc.Render("Back")+"  "+
 				styles.ShortcutKey.Render("S")+" "+styles.ShortcutDesc.Render("Skip")))
-		return strings.Join(sections, "\n")
+		
+		content := lipgloss.JoinVertical(lipgloss.Left, sections...)
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, content)
 	}
 
 	// If not authenticated
@@ -384,7 +396,9 @@ func (m OnboardingGitHubScreen) View() string {
 			styles.ShortcutKey.Render("Enter")+" "+styles.ShortcutDesc.Render("Skip & Continue")+"  "+
 				styles.ShortcutKey.Render("Esc")+" "+styles.ShortcutDesc.Render("Back")+"  "+
 				styles.ShortcutKey.Render("S")+" "+styles.ShortcutDesc.Render("Skip")))
-		return strings.Join(sections, "\n")
+		
+		content := lipgloss.JoinVertical(lipgloss.Left, sections...)
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, content)
 	}
 
 	// If remote already exists
@@ -402,13 +416,15 @@ func (m OnboardingGitHubScreen) View() string {
 			styles.ShortcutKey.Render("Enter")+" "+styles.ShortcutDesc.Render("Continue")+"  "+
 				styles.ShortcutKey.Render("Esc")+" "+styles.ShortcutDesc.Render("Back")+"  "+
 				styles.ShortcutKey.Render("S")+" "+styles.ShortcutDesc.Render("Skip")))
-		return strings.Join(sections, "\n")
+		
+		content := lipgloss.JoinVertical(lipgloss.Left, sections...)
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, content)
 	}
 
 	// If creating
 	if m.creating {
 		sections = append(sections, lipgloss.NewStyle().Foreground(styles.ColorPrimary).Render("Creating GitHub repository..."))
-		return strings.Join(sections, "\n")
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, strings.Join(sections, "\n"))
 	}
 
 	// If create complete
@@ -420,12 +436,14 @@ func (m OnboardingGitHubScreen) View() string {
 		sections = append(sections, "")
 		sections = append(sections, styles.Footer.Render(
 			styles.ShortcutKey.Render("Enter")+" "+styles.ShortcutDesc.Render("Continue")))
-		return strings.Join(sections, "\n")
+		
+		content := lipgloss.JoinVertical(lipgloss.Left, sections...)
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, content)
 	}
 
 	// Full form
-	sections = append(sections, lipgloss.NewStyle().Foreground(styles.ColorText).Render(
-		"Create a new GitHub repository for this project:"))
+	formTitle := lipgloss.NewStyle().Foreground(styles.ColorText).Bold(true).Render("Create a new GitHub repository")
+	sections = append(sections, formTitle)
 	sections = append(sections, "")
 
 	// Repository name
@@ -477,8 +495,19 @@ func (m OnboardingGitHubScreen) View() string {
 		sections = append(sections, styles.StatusError.Render("Error: "+m.error))
 	}
 
-	sections = append(sections, "")
-	sections = append(sections, renderSeparator(70))
+	// Wrap in card
+	content := lipgloss.JoinVertical(lipgloss.Left, sections...)
+	cardStyle := styles.DashboardCard.Padding(1, 2)
+	
+	// Main view assembly
+	mainView := []string{
+		header,
+		styles.Metadata.Render(progress),
+		"",
+		cardStyle.Render(content),
+		"",
+		renderSeparator(70),
+	}
 
 	// Footer - simple, consistent instructions
 	footerText := styles.ShortcutKey.Render("Tab/↑↓") + " " + styles.ShortcutDesc.Render("Navigate") + "  " +
@@ -500,9 +529,16 @@ func (m OnboardingGitHubScreen) View() string {
 	}
 
 	footer := styles.Footer.Render(footerText)
-	sections = append(sections, footer)
+	mainView = append(mainView, footer)
 
-	return strings.Join(sections, "\n")
+	// Center the whole view
+	return lipgloss.Place(
+		m.width,
+		m.height,
+		lipgloss.Center,
+		lipgloss.Center,
+		lipgloss.JoinVertical(lipgloss.Left, mainView...),
+	)
 }
 
 // ShouldContinue returns true if user wants to continue

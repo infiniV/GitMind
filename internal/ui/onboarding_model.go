@@ -47,6 +47,10 @@ type OnboardingModel struct {
 	aiScreen        *OnboardingAIScreen
 	summaryScreen   *OnboardingSummaryScreen
 
+	// Window dimensions
+	windowWidth  int
+	windowHeight int
+
 	// Completion flag
 	completed bool
 	cancelled bool
@@ -69,6 +73,8 @@ func NewOnboardingModel(cfg *domain.Config, cfgManager *config.Manager, gitOps g
 		completed:     false,
 		cancelled:     false,
 		welcomeScreen: &welcomeScreen,
+		windowWidth:   100, // Default fallback
+		windowHeight:  40,  // Default fallback
 	}
 }
 
@@ -82,6 +88,12 @@ func (m OnboardingModel) Init() tea.Cmd {
 
 // Update handles messages
 func (m OnboardingModel) Update(msg tea.Msg) (OnboardingModel, tea.Cmd) {
+	// Handle window resize
+	if msg, ok := msg.(tea.WindowSizeMsg); ok {
+		m.windowWidth = msg.Width
+		m.windowHeight = msg.Height
+	}
+
 	// Handle global keys
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -173,6 +185,8 @@ func (m OnboardingModel) updateWelcomeScreen(msg tea.Msg) (OnboardingModel, tea.
 		m.currentStep++
 		// Initialize git init screen
 		screen := NewOnboardingGitInitScreen(m.currentStep, m.totalSteps, m.gitOps, m.repoPath)
+		screen.width = m.windowWidth
+		screen.height = m.windowHeight
 		m.gitInitScreen = &screen
 		return m, screen.Init()
 	}
@@ -197,6 +211,8 @@ func (m OnboardingModel) updateGitInitScreen(msg tea.Msg) (OnboardingModel, tea.
 		m.state = OnboardingGitHub
 		m.currentStep++
 		screen := NewOnboardingGitHubScreen(m.currentStep, m.totalSteps, m.config, m.repoPath)
+		screen.width = m.windowWidth
+		screen.height = m.windowHeight
 		m.githubScreen = &screen
 		return m, screen.Init()
 	}
@@ -223,6 +239,8 @@ func (m OnboardingModel) updateGitHubScreen(msg tea.Msg) (OnboardingModel, tea.C
 		m.state = OnboardingBranches
 		m.currentStep++
 		screen := NewOnboardingBranchesScreen(m.currentStep, m.totalSteps, m.config)
+		screen.width = m.windowWidth
+		screen.height = m.windowHeight
 		m.branchesScreen = &screen
 		return m, screen.Init()
 	}
@@ -249,6 +267,8 @@ func (m OnboardingModel) updateBranchesScreen(msg tea.Msg) (OnboardingModel, tea
 		m.state = OnboardingCommits
 		m.currentStep++
 		screen := NewOnboardingCommitsScreen(m.currentStep, m.totalSteps, m.config)
+		screen.width = m.windowWidth
+		screen.height = m.windowHeight
 		m.commitsScreen = &screen
 		return m, screen.Init()
 	}
@@ -274,6 +294,8 @@ func (m OnboardingModel) updateCommitsScreen(msg tea.Msg) (OnboardingModel, tea.
 		m.state = OnboardingNaming
 		m.currentStep++
 		screen := NewOnboardingNamingScreen(m.currentStep, m.totalSteps, m.config)
+		screen.width = m.windowWidth
+		screen.height = m.windowHeight
 		m.namingScreen = &screen
 		return m, screen.Init()
 	}
@@ -299,6 +321,8 @@ func (m OnboardingModel) updateNamingScreen(msg tea.Msg) (OnboardingModel, tea.C
 		m.state = OnboardingAI
 		m.currentStep++
 		screen := NewOnboardingAIScreen(m.currentStep, m.totalSteps, m.config)
+		screen.width = m.windowWidth
+		screen.height = m.windowHeight
 		m.aiScreen = &screen
 		return m, screen.Init()
 	}
@@ -324,6 +348,8 @@ func (m OnboardingModel) updateAIScreen(msg tea.Msg) (OnboardingModel, tea.Cmd) 
 		m.state = OnboardingSummary
 		m.currentStep++
 		screen := NewOnboardingSummaryScreen(m.currentStep, m.totalSteps, m.config)
+		screen.width = m.windowWidth
+		screen.height = m.windowHeight
 		m.summaryScreen = &screen
 		return m, screen.Init()
 	}

@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -25,6 +24,9 @@ type OnboardingBranchesScreen struct {
 
 	shouldContinue bool
 	shouldGoBack   bool
+	
+	width  int
+	height int
 }
 
 // NewOnboardingBranchesScreen creates a new branches screen
@@ -55,6 +57,8 @@ func NewOnboardingBranchesScreen(step, totalSteps int, config *domain.Config) On
 		autoPull:          NewCheckbox("Auto-pull before operations", config.Git.AutoPull),
 
 		focusedField: 0,
+		width:        100,
+		height:       40,
 	}
 
 	// Set current main branch
@@ -75,6 +79,11 @@ func (m OnboardingBranchesScreen) Init() tea.Cmd {
 // Update handles messages
 func (m OnboardingBranchesScreen) Update(msg tea.Msg) (OnboardingBranchesScreen, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "enter":
@@ -207,13 +216,13 @@ func (m OnboardingBranchesScreen) View() string {
 
 	// Header
 	header := styles.Header.Render("Branch Configuration")
-	sections = append(sections, header)
+	// sections = append(sections, header) // Moved to mainView
 
 	// Progress
 	progress := fmt.Sprintf("Step %d of %d", m.step, m.totalSteps)
-	sections = append(sections, styles.Metadata.Render(progress))
+	// sections = append(sections, styles.Metadata.Render(progress)) // Moved to mainView
 
-	sections = append(sections, "")
+	// sections = append(sections, "")
 
 	// Description
 	desc := lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(
@@ -261,17 +270,34 @@ func (m OnboardingBranchesScreen) View() string {
 	continueBtn.Focused = (m.focusedField == 4)
 	sections = append(sections, continueBtn.View())
 
-	sections = append(sections, "")
-	sections = append(sections, renderSeparator(70))
+	// Wrap in card
+	content := lipgloss.JoinVertical(lipgloss.Left, sections...)
+	cardStyle := styles.DashboardCard.Padding(1, 2)
+
+	// Main view assembly
+	mainView := []string{
+		header,
+		styles.Metadata.Render(progress),
+		"",
+		cardStyle.Render(content),
+		"",
+		renderSeparator(70),
+	}
 
 	// Footer
 	footer := styles.Footer.Render(
 		styles.ShortcutKey.Render("Tab/↑↓")+" "+styles.ShortcutDesc.Render("Navigate")+"  "+
 			styles.ShortcutKey.Render("Space")+" "+styles.ShortcutDesc.Render("Toggle")+"  "+
 			styles.ShortcutKey.Render("←")+" "+styles.ShortcutDesc.Render("Back"))
-	sections = append(sections, footer)
+	mainView = append(mainView, footer)
 
-	return strings.Join(sections, "\n")
+	return lipgloss.Place(
+		m.width,
+		m.height,
+		lipgloss.Center,
+		lipgloss.Center,
+		lipgloss.JoinVertical(lipgloss.Left, mainView...),
+	)
 }
 
 // ShouldContinue returns true if user wants to continue

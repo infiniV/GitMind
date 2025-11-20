@@ -10,10 +10,12 @@ import (
 
 // OnboardingWelcomeScreen is the welcome/intro screen
 type OnboardingWelcomeScreen struct {
-	step         int
-	totalSteps   int
+	step           int
+	totalSteps     int
 	shouldContinue bool
-	shouldSkip    bool
+	shouldSkip     bool
+	width          int
+	height         int
 }
 
 // NewOnboardingWelcomeScreen creates a new welcome screen
@@ -23,6 +25,8 @@ func NewOnboardingWelcomeScreen(step, totalSteps int) OnboardingWelcomeScreen {
 		totalSteps:     totalSteps,
 		shouldContinue: false,
 		shouldSkip:     false,
+		width:          100, // Default
+		height:         40,  // Default
 	}
 }
 
@@ -34,6 +38,11 @@ func (m OnboardingWelcomeScreen) Init() tea.Cmd {
 // Update handles messages
 func (m OnboardingWelcomeScreen) Update(msg tea.Msg) (OnboardingWelcomeScreen, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "enter":
@@ -52,9 +61,6 @@ func (m OnboardingWelcomeScreen) Update(msg tea.Msg) (OnboardingWelcomeScreen, t
 func (m OnboardingWelcomeScreen) View() string {
 	styles := GetGlobalThemeManager().GetStyles()
 	var sections []string
-
-	sections = append(sections, "")
-	sections = append(sections, "")
 
 	// ASCII Art Logo
 	logoStyle := lipgloss.NewStyle().
@@ -97,7 +103,7 @@ func (m OnboardingWelcomeScreen) View() string {
 	welcomeStyle := lipgloss.NewStyle().
 		Foreground(styles.ColorText).
 		Align(lipgloss.Center).
-		Width(70).
+		Width(60). // Constrain text width for readability
 		MarginBottom(2)
 
 	welcome := welcomeStyle.Render(
@@ -112,7 +118,7 @@ func (m OnboardingWelcomeScreen) View() string {
 		Foreground(styles.ColorBorder).
 		Align(lipgloss.Center)
 
-	sections = append(sections, separatorStyle.Render(strings.Repeat("─", 70)))
+	sections = append(sections, separatorStyle.Render(strings.Repeat("─", 60)))
 	sections = append(sections, "")
 
 	// Footer with enhanced styling
@@ -128,11 +134,16 @@ func (m OnboardingWelcomeScreen) View() string {
 	sections = append(sections, footer)
 
 	// Center everything
-	content := strings.Join(sections, "\n")
-	return lipgloss.NewStyle().
-		Align(lipgloss.Center).
-		Width(100).
-		Render(content)
+	content := lipgloss.JoinVertical(lipgloss.Center, sections...)
+	
+	// Use lipgloss.Place to center vertically and horizontally in the terminal
+	return lipgloss.Place(
+		m.width, 
+		m.height, 
+		lipgloss.Center, 
+		lipgloss.Center, 
+		content,
+	)
 }
 
 // renderProgressBar creates a visual progress indicator

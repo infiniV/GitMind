@@ -19,6 +19,9 @@ type OnboardingSummaryScreen struct {
 
 	shouldSave   bool
 	shouldGoBack bool
+	
+	width  int
+	height int
 }
 
 // NewOnboardingSummaryScreen creates a new summary screen
@@ -28,6 +31,8 @@ func NewOnboardingSummaryScreen(step, totalSteps int, config *domain.Config) Onb
 		totalSteps:     totalSteps,
 		config:         config,
 		selectedOption: 0,
+		width:          100,
+		height:         40,
 	}
 }
 
@@ -39,6 +44,11 @@ func (m OnboardingSummaryScreen) Init() tea.Cmd {
 // Update handles messages
 func (m OnboardingSummaryScreen) Update(msg tea.Msg) (OnboardingSummaryScreen, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "enter":
@@ -87,9 +97,7 @@ func (m OnboardingSummaryScreen) View() string {
 	sections = append(sections, intro)
 
 	sections = append(sections, "")
-	sections = append(sections, renderSeparator(70))
-	sections = append(sections, "")
-
+	
 	// Git Configuration
 	sections = append(sections, getSectionHeaderStyle().Render("Git Configuration"))
 	sections = append(sections, "")
@@ -151,8 +159,6 @@ func (m OnboardingSummaryScreen) View() string {
 	sections = append(sections, m.renderKeyValue("Include Context", m.boolToString(m.config.AI.IncludeContext)))
 
 	sections = append(sections, "")
-	sections = append(sections, renderSeparator(70))
-	sections = append(sections, "")
 
 	// Buttons
 	saveBtn := NewButton("Save & Continue")
@@ -163,16 +169,33 @@ func (m OnboardingSummaryScreen) View() string {
 	buttons := lipgloss.JoinHorizontal(lipgloss.Top, saveBtn.View(), "  ", backBtn.View())
 	sections = append(sections, buttons)
 
-	sections = append(sections, "")
-	sections = append(sections, renderSeparator(70))
+	// Wrap in card
+	content := lipgloss.JoinVertical(lipgloss.Left, sections...)
+	cardStyle := styles.DashboardCard.Padding(1, 2)
+
+	// Main view assembly
+	mainView := []string{
+		header,
+		styles.Metadata.Render(progress),
+		"",
+		cardStyle.Render(content),
+		"",
+		renderSeparator(70),
+	}
 
 	// Footer
 	footer := styles.Footer.Render(
 		styles.ShortcutKey.Render("Tab/←→")+" "+styles.ShortcutDesc.Render("Navigate")+"  "+
 			styles.ShortcutKey.Render("Enter")+" "+styles.ShortcutDesc.Render("Confirm"))
-	sections = append(sections, footer)
+	mainView = append(mainView, footer)
 
-	return strings.Join(sections, "\n")
+	return lipgloss.Place(
+		m.width,
+		m.height,
+		lipgloss.Center,
+		lipgloss.Center,
+		lipgloss.JoinVertical(lipgloss.Left, mainView...),
+	)
 }
 
 // Helper methods
